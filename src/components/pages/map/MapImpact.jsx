@@ -13,7 +13,8 @@ function calculateAirBlastPressureKPa(energyMt, distanceKm) {
   const R = Math.max(distanceKm, 0.01); // evitar división por cero
   return 0.28 * Math.pow(Ekt / (R*R*R), 0.72);
 }
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { energyToMagnitude, findSimilarEarthquakes } from '../../../earthquakeEnergyService';
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents, useMap } from "react-leaflet";
 // Componente auxiliar para ajustar el zoom al círculo más grande
 function FitCircleBounds({ center, radiusMeters }) {
@@ -66,15 +67,31 @@ const DEFAULT_CENTER = [20, 0];
 const DEFAULT_ZOOM = 2;
 const DEFAULT_ENERGY_MT = 10; // 10 megatones (ejemplo)
 
+
 const MapImpact = ({ energyMt = DEFAULT_ENERGY_MT, initialLat, initialLng }) => {
   const [impactPos, setImpactPos] = useState(
     initialLat != null && initialLng != null ? [initialLat, initialLng] : null
   );
 
   const craterRadiusKm = calculateCraterRadiusKm(energyMt);
-  const earthquakeMag = calculateEarthquakeMagnitude(energyMt);
+  // Usar la fórmula oficial para magnitud equivalente
+  const earthquakeMag = energyToMagnitude(energyMt * 4.184e15); // Mt a julios
+  console.log('Calculated earthquake magnitude:', earthquakeMag);
   // Presión máxima en el borde del cráter (zona de vaporización)
   const airPressureEpicenter = calculateAirBlastPressureKPa(energyMt, craterRadiusKm * impactZones[0].relRadius);
+
+  // Estado para terremotos reales equivalentes
+  const [similarQuakes, setSimilarQuakes] = useState([]);
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchQuakes() {
+      if (!earthquakeMag || isNaN(earthquakeMag)) return setSimilarQuakes([]);
+      const quakes = await findSimilarEarthquakes(earthquakeMag, 0.15, 3);
+      if (!cancelled) setSimilarQuakes(quakes);
+    }
+    fetchQuakes();
+    return () => { cancelled = true; };
+  }, [earthquakeMag]);
 
   // Radio del círculo más grande (última zona)
   const maxZone = impactZones[impactZones.length - 1];
@@ -138,11 +155,27 @@ const MapImpact = ({ energyMt = DEFAULT_ENERGY_MT, initialLat, initialLng }) => 
             <span style={{ color: '#fff200', fontWeight: 700 }}>Energía:</span> {energyMt.toLocaleString()} Mt
           </div>
           <div style={{ fontWeight: 600, color: '#fff', fontSize: 15 }}>
-            <span style={{ color: '#ff3d00', fontWeight: 700 }}>Magnitud terremoto:</span> {earthquakeMag.toFixed(1)}
+            <span style={{ color: '#ff3d00', fontWeight: 700 }}>Magnitud terremoto:</span> {earthquakeMag?.toFixed(1)}
           </div>
           <div style={{ fontWeight: 600, color: '#fff', fontSize: 15 }}>
             <span style={{ color: '#00e7ff', fontWeight: 700 }}>Presión máx.:</span> {airPressureEpicenter.toFixed(1)} kPa <span style={{ color: '#b2f7ef', fontWeight: 500 }}>({(airPressureEpicenter/101.3).toFixed(2)} atm)</span>
           </div>
+          {similarQuakes.length > 0 && (
+            <div style={{ marginTop: 6, fontSize: 13, color: '#b2f7ef' }}>
+              <div style={{ fontWeight: 600, color: '#7c4dff', marginBottom: 2 }}>Ejemplos reales:</div>
+              <ul style={{ margin: 0, paddingLeft: 16 }}>
+                {similarQuakes.map(q => (
+                  <li key={q.id} style={{ marginBottom: 2 }}>
+                    <a href={q.url} target="_blank" rel="noopener noreferrer" style={{ color: '#fff200', textDecoration: 'underline', fontWeight: 500 }}>
+                      {q.place || 'Terremoto'}
+                    </a>{' '}
+                    <span style={{ color: '#ff3d00', fontWeight: 600 }}>M{q.magnitude}</span>{' '}
+                    <span style={{ color: '#b2f7ef' }}>({new Date(q.time).getFullYear()})</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
       {/* Leyenda de zonas de impacto */}
