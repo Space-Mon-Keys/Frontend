@@ -24,9 +24,59 @@ const IMPACTS = {
 };
 
 const MATERIALS = {
-  ice: { label: "Cometa (Hielo)", factor: 0.5 },
-  rock: { label: "Rocoso", factor: 1 },
-  metal: { label: "Metálico", factor: 2 }
+  ice: {
+    label: "Cometa (Hielo)",
+    factor: 0.5,
+    info: `Composición aproximada:
+- H2O: 70%
+- CO2: 15%
+- CH4 + NH3: 5%
+- Polvo y minerales: 10%
+
+Características:
+- Densidad: 500–1000 kg/m³
+- Poroso y frágil, se desintegra con facilidad
+- Origen: Nube de Oort / Cinturón de Kuiper
+- Visual al entrar: brillo azul verdoso, fragmentación temprana, estelas cortas
+- Fenómenos asociados: lluvias de meteoros, sublimación cerca del Sol`
+    ,
+    image: "https://content.nationalgeographic.com.es/medio/2023/03/09/cometa-c2023-a3_5224887f_1280_230309094606_1200x630.jpg"
+  },
+  rock: {
+    label: "Asteroide Rocoso",
+    factor: 1,
+    info: `Composición aproximada:
+- Silicatos (olivino, piroxeno): 80%
+- Metales menores: 5–10%
+- Sulfuros: 5%
+- Otros minerales: 5–10%
+
+Características:
+- Densidad: 2500–3500 kg/m³
+- Resistente, fragmenta parcialmente al entrar en la atmósfera
+- Origen: cinturón principal de asteroides
+- Visual al entrar: brillo anaranjado/rojizo, estelas fragmentadas
+- Fenómeno asociado: bólidos brillantes, meteoritos condritas frecuentes`
+    ,
+    image: "https://media.istockphoto.com/id/1222035078/es/vector/cometa-realista-meteorito-un-asteroide-en-movimiento-arde-contra-el-fondo-del-espacio.jpg?s=612x612&w=0&k=20&c=xEaOmevyMosgmX3ka5iWzjFdXTodgfzxu541DS_8peU="
+  },
+  metal: {
+    label: "Asteroide Metálico",
+    factor: 2,
+    info: `Composición aproximada:
+- Hierro (Fe): 85–90%
+- Níquel (Ni): 5–10%
+- Otros metales: 5%
+
+Características:
+- Densidad: 7000–8000 kg/m³
+- Muy resistente, sobrevive mayormente intacto
+- Origen: núcleos de planetesimales destruidos
+- Visual al entrar: blanco-azulado intenso, incandescencia roja en fragmentación
+- Fenómeno asociado: meteoritos metálicos, alta energía de impacto`
+    ,
+    image: "https://www.elfinanciero.com.mx/resizer/v2/HNGAZOACPZGYTHTTOAUQTM3FHU.jpg?smart=true&auth=663b69256d2286554be98d1862f53f9e304de4fa4c56ee636456f3093f1cc0b8&width=400&height=225&quality=85"
+  }
 };
 
 const BASE_DENSITY = 3000;
@@ -48,6 +98,8 @@ export default function Home() {
   const [material, setMaterial] = useLocalState("rock");
   const [materialFactor, setMaterialFactor] = useLocalState(1);
 
+  const [showModal, setShowModal] = useLocalState(false);
+  const [modalMaterial, setModalMaterial] = useLocalState(null);
   useEffect(() => {
     setLoadingAsteroids(true);
     setAsteroidError(null);
@@ -160,24 +212,60 @@ export default function Home() {
             <input type="number" min="1" value={density} onChange={e => setDensity(Number(e.target.value))} style={{ marginLeft: 8, width: 100, fontSize: 12 }} />
           </label>
           <div style={{ marginTop: 12 }}>
-            <label style={{ fontSize: 13, display: "block", marginBottom: 4 }}>
+            <label style={{ fontSize: 13, display: "block", marginBottom: 6 }}>
               Tipo de material:
             </label>
-            <select
-              value={material}
-              onChange={e => {
-                const val = e.target.value;
-                setMaterial(val);
-                const factor = MATERIALS[val].factor;
-                setMaterialFactor(factor);
-                setDensity(BASE_DENSITY * factor); // actualiza density
-              }}
-              style={{ fontSize: 12, width: "100%" }}
-            >
-              {Object.entries(MATERIALS).map(([key, mat]) => (
-                <option key={key} value={key}>{mat.label}</option>
-              ))}
-            </select>
+
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              {/* Select estilizado */}
+              <select
+                value={material}
+                onChange={e => {
+                  const val = e.target.value;
+                  setMaterial(val);
+                  const factor = MATERIALS[val].factor;
+                  setMaterialFactor(factor);
+                  setDensity(BASE_DENSITY * factor);
+                }}
+                style={{
+                  flex: 1,
+                  fontSize: 12,
+                  padding: "6px 8px",
+                  borderRadius: 6,
+                  border: "1px solid rgba(124,77,255,0.5)",
+                  background: "#1e1e2f",
+                  color: "#fff",
+                  appearance: "none", // quita flecha por defecto
+                  cursor: "pointer"
+                }}
+              >
+                {Object.entries(MATERIALS).map(([key, mat]) => (
+                  <option key={key} value={key}>
+                    {mat.label}
+                  </option>
+                ))}
+              </select>
+
+              {/* Botón info separado */}
+              <button
+                type="button"
+                onClick={() => {
+                  setModalMaterial(material);
+                  setShowModal(true);
+                }}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "#7c4dff",
+                  fontSize: 18,
+                  cursor: "pointer",
+                  flexShrink: 0
+                }}
+                title="Más información"
+              >
+                ℹ️
+              </button>
+            </div>
           </div>
           <div style={{ marginTop: 12 }}>
             <label style={{ fontSize: 13, display: "block", marginBottom: 4 }}>
@@ -298,6 +386,68 @@ export default function Home() {
             />
           )}
         </IrisTransition>
+
+
+        {/* Modal info meteoritos*/}
+        {showModal && modalMaterial && (
+          <div
+            onClick={() => setShowModal(false)}
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: "rgba(0,0,0,0.7)",
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              zIndex: 1000
+            }}
+          >
+            <div
+              onClick={e => e.stopPropagation()} // evita cerrar al clicar dentro
+              style={{
+                background: "#1e1e2f",
+                borderRadius: 12,
+                padding: 20,
+                maxWidth: 450,
+                width: "90%",
+                color: "#fff",
+                boxShadow: "0 8px 20px rgba(0,0,0,0.5)",
+                position: "relative"
+              }}
+            >
+              {/* Botón X */}
+              <button
+                onClick={() => setShowModal(false)}
+                style={{
+                  position: "absolute",
+                  top: 12,
+                  right: 12,
+                  background: "transparent",
+                  border: "none",
+                  color: "#fff",
+                  fontSize: 18,
+                  cursor: "pointer",
+                }}
+                title="Cerrar"
+              >
+                ✖
+              </button>
+
+              <h3 style={{ color: "#7c4dff", marginBottom: 12 }}>{MATERIALS[modalMaterial].label}</h3>
+              <img
+                src={MATERIALS[modalMaterial].image}
+                alt={MATERIALS[modalMaterial].label}
+                style={{ maxWidth: "100%", borderRadius: 8, marginBottom: 12 }}
+              />
+              <pre style={{ fontSize: 13, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
+                {MATERIALS[modalMaterial].info}
+              </pre>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
