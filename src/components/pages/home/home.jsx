@@ -1,217 +1,61 @@
-
-
-import React, { useState } from 'react';
-// import Scenarios from '../scenarios/Scenarios';
-import GlobeDeform from '../map/GlobeDeform';
-import { useState as useLocalState, useEffect } from 'react';
-import './home.css';
-
-const IMPACTS = {
-  city: {
-    title: 'City Impact',
-    effect: 'Severe infrastructure damage, multiple injuries, possible collapse of services.'
-  },
-  countryside: {
-    title: 'Countryside Impact',
-    effect: 'Damage to crops, wildfires, low impact on population.'
-  },
-  ocean: {
-    title: 'Ocean Impact',
-    effect: 'Tsunami generation, risk for coastal areas.'
-  }
-};
-
-export default function Home() {
-  // const [scenario, setScenario] = useState(null);
-
-  // Asteroid parameters (default values)
-  const [diameter, setDiameter] = useLocalState(100); // meters
-  const [velocity, setVelocity] = useLocalState(20000); // m/s
-  const [density, setDensity] = useLocalState(3000); // kg/m^3
-
-  // NASA asteroid data
-  const [asteroids, setAsteroids] = useLocalState([]);
-  const [loadingAsteroids, setLoadingAsteroids] = useLocalState(false);
-  const [asteroidError, setAsteroidError] = useLocalState(null);
-
-  useEffect(() => {
-    setLoadingAsteroids(true);
-    setAsteroidError(null);
-    // Get today's date
-    const today = new Date().toISOString().slice(0, 10);
-    const apiKey = import.meta.env.VITE_NASA_API_KEY || 'DEMO_KEY';
-    fetch(`https://api.nasa.gov/neo/rest/v1/feed?start_date=${today}&end_date=${today}&api_key=${apiKey}`)
-      .then(res => res.json())
-      .then(data => {
-        // Flatten the NEOs into a single array
-        let neos = [];
-        if (data && data.near_earth_objects) {
-          Object.values(data.near_earth_objects).forEach(arr => {
-            if (Array.isArray(arr)) neos = neos.concat(arr);
-          });
-        }
-        setAsteroids(neos);
-        setLoadingAsteroids(false);
-      })
-      .catch(err => {
-        setAsteroidError('Failed to load asteroids');
-        setLoadingAsteroids(false);
-      });
-  }, []);
-
-  function handleAsteroidSelect(e) {
-    const idx = e.target.value;
-    if (!asteroids[idx]) return;
-    const a = asteroids[idx];
-    // Diameter: use estimated_diameter.meters.estimated_diameter_max (or avg)
-    const d = a.estimated_diameter.meters;
-    setDiameter(Math.round((d.estimated_diameter_min + d.estimated_diameter_max) / 2));
-    // Velocity: use close_approach_data[0].relative_velocity.kilometers_per_hour (convert to m/s)
-    const v = a.close_approach_data[0]?.relative_velocity?.kilometers_per_hour;
-    if (v) setVelocity(Math.round(Number(v) * 1000 / 3600));
-    // Density: default 3000 kg/m³ (unless we want to estimate by type)
-    setDensity(3000);
-  }
-
-  // Calculate impact energy (Joules)
-  // E = 0.5 * m * v^2, m = (4/3) * pi * (d/2)^3 * density
-  const radius = diameter / 2;
-  const volume = (4 / 3) * Math.PI * Math.pow(radius, 3);
-  const mass = volume * density;
-  const energyJ = 0.5 * mass * Math.pow(velocity, 2);
-  const energyMt = energyJ / 4.184e15; // Convert to megatons TNT
-
-
-  // Estado para selección previa y confirmación de impacto
-  const [selectedLat, setSelectedLat] = useLocalState(null);
-  const [selectedLng, setSelectedLng] = useLocalState(null);
-  const [impactLat, setImpactLat] = useLocalState(null);
-  const [impactLng, setImpactLng] = useLocalState(null);
-  const [impacted, setImpacted] = useLocalState(false);
-
-  // Calcular radio del cráter en km
-  const craterRadiusKm = Math.max(0.5, Math.cbrt(energyMt) * 1.8); // mismo factor que antes, pero en km
-
-  // Para react-three-fiber, el click se puede manejar con un input externo o con controles personalizados
-  function handleGlobeClick(e) {
-    // e = {lat, lng} esperado, pero para el mockup usaremos un input manual
-    // Aquí podrías implementar un input para seleccionar el punto de impacto
-  }
-
+import { motion, AnimatePresence } from 'framer-motion'
+import { Routes, Route, Link, useLocation } from 'react-router-dom'
+import EarthApp from '../earth/earth.jsx'
+import './home.css'
+function home() {
   return (
-    <div className="impact-container">
-      <div style={{ position: 'relative', width: '100%', height: '100vh' }}>
-        {/* Panel flotante de parámetros */}
-        <div style={{
-          position: 'absolute',
-          top: 20,
-          left: 20,
-          zIndex: 10,
-          background: 'rgba(20, 20, 40, 0.95)',
-          borderRadius: 12,
-          padding: 16,
-          maxWidth: 350,
-          backdropFilter: 'blur(10px)',
-          border: '1px solid rgba(124, 77, 255, 0.3)',
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)'
-        }}>
-          <h3 style={{color:'#7c4dff', marginTop: 0, fontSize: 18}}>Asteroid Parameters</h3>
-          <form style={{display:'flex',flexDirection:'column',gap:10}} onSubmit={e=>e.preventDefault()}>
-            <label style={{fontSize: 13}}>
-              Select real asteroid:
-              <select onChange={handleAsteroidSelect} style={{marginLeft:8, fontSize: 12, width: '100%', marginTop: 4}} defaultValue="">
-                <option value="">-- Choose from NASA NEOs --</option>
-                {loadingAsteroids && <option>Loading...</option>}
-                {asteroidError && <option disabled>{asteroidError}</option>}
-                {asteroids.map((a, i) => (
-                  <option key={a.id} value={i}>
-                    {a.name} (D: {Math.round((a.estimated_diameter.meters.estimated_diameter_min + a.estimated_diameter.meters.estimated_diameter_max)/2)} m)
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label style={{fontSize: 13}}>
-              Diameter (m):
-              <input type="number" min="1" value={diameter} onChange={e=>setDiameter(Number(e.target.value))} style={{marginLeft:8, width: 100, fontSize: 12}} />
-            </label>
-            <label style={{fontSize: 13}}>
-              Velocity (m/s):
-              <input type="number" min="1" value={velocity} onChange={e=>setVelocity(Number(e.target.value))} style={{marginLeft:8, width: 100, fontSize: 12}} />
-            </label>
-            <label style={{fontSize: 13}}>
-              Density (kg/m³):
-              <input type="number" min="1" value={density} onChange={e=>setDensity(Number(e.target.value))} style={{marginLeft:8, width: 100, fontSize: 12}} />
-            </label>
-            <div style={{marginTop:8, padding: '8px', background: 'rgba(124, 77, 255, 0.2)', borderRadius: 6}}>
-              <strong style={{fontSize: 13}}>Impact energy:</strong>
-              <div style={{fontSize: 16, color: '#7c4dff', fontWeight: 'bold'}}>{energyMt.toLocaleString(undefined,{maximumFractionDigits:2})} Mt TNT</div>
-            </div>
-          </form>
-          
-          <div style={{marginTop: 12, paddingTop: 12, borderTop: '1px solid rgba(124, 77, 255, 0.3)'}}>
-            <div style={{fontSize: 12, marginBottom: 8}}>
-              <label style={{color:'#e0e7ff', display: 'block', marginBottom: 4}}>Impact coordinates:</label>
-              <div style={{display: 'flex', gap: 8, fontSize: 11}}>
-                <div>
-                  <span style={{opacity: 0.7}}>Lat:</span>
-                  <input type="number" min={-90} max={90} value={selectedLat ?? ''} onChange={e=>setSelectedLat(Number(e.target.value))} style={{width:60, marginLeft: 4, fontSize: 11}} />
-                </div>
-                <div>
-                  <span style={{opacity: 0.7}}>Lng:</span>
-                  <input type="number" min={-180} max={180} value={selectedLng ?? ''} onChange={e=>setSelectedLng(Number(e.target.value))} style={{width:60, marginLeft: 4, fontSize: 11}} />
-                </div>
-              </div>
-            </div>
-            
-            {selectedLat !== null && selectedLng !== null && !impacted && (
-              <button onClick={() => {
-                setImpactLat(selectedLat);
-                setImpactLng(selectedLng);
-                setImpacted(true);
-              }} style={{
-                width: '100%',
-                padding:'10px 24px',
-                fontSize:16,
-                background:'linear-gradient(90deg, #7c4dff 0%, #00bcd4 100%)',
-                color:'#fff',
-                border:'none',
-                borderRadius:8,
-                cursor:'pointer',
-                fontWeight: 'bold',
-                marginTop: 8
-              }}>IMPACTAR</button>
-            )}
-            
-            {impacted && (
-              <button onClick={() => setImpacted(false)} style={{
-                width: '100%',
-                padding:'8px 16px',
-                fontSize:13,
-                background:'#333',
-                color:'#fff',
-                border:'none',
-                borderRadius:8,
-                cursor:'pointer',
-                marginTop: 8
-              }}>Resetear</button>
-            )}
-          </div>
-        </div>
-
-        {/* Globo que ocupa toda la pantalla */}
-        <GlobeDeform
-          selectedLat={selectedLat}
-          selectedLng={selectedLng}
-          impactLat={impacted ? impactLat : null}
-          impactLng={impacted ? impactLng : null}
-          craterRadiusKm={craterRadiusKm}
-          showCrater={impacted}
-          onSphereClick={({ lat, lng }) => {
-            setSelectedLat(lat);
-            setSelectedLng(lng);
+    <motion.div 
+      className="cosmo-crush-screen"
+      initial={{ opacity: 0, scale: 1.1 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.9 }}
+      transition={{ 
+        duration: 0.8,
+        ease: "easeInOut"
+      }}
+    >
+      <motion.div
+        className="cosmo-crush-container"
+        initial={{ opacity: 0, scale: 0.8 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.8, y: -50 }}
+        transition={{ 
+          duration: 2.5,
+          ease: "easeOut"
+        }}
+      >
+        <motion.h1 
+          className="cosmo-crush-title"
+          initial={{ opacity: 0, y: 50 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -30 }}
+          transition={{ 
+            delay: 0.5,
+            duration: 1.8,
+            ease: "easeOut"
           }}
-        />
-      </div>
-    </div>
-  );
+        >
+          CosmoCrush
+        </motion.h1>
+        
+        <motion.div
+          className="navigation-links"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0, scale: 0.8 }}
+          transition={{ 
+            delay: 2,
+            duration: 1.5,
+            ease: "easeOut"
+          }}
+        >
+          <Link to="/earth" className="earth-link">
+            Enter the Cosmos
+          </Link>
+        </motion.div>
+      </motion.div>
+    </motion.div>
+  )
 }
+
+export default home

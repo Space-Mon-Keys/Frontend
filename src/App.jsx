@@ -1,24 +1,19 @@
-
-import { useState } from 'react';
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import Home from './components/pages/home/home';
-import Welcome from './components/pages/welcome/Welcome';
-import './App.css';
+import { useState } from 'react'
+import { BrowserRouter,Routes,Route } from "react-router-dom";
+import Home from './components/pages/home/home'
+import EarthApp from './components/pages/earth/earth.jsx'
+import './App.css'
 
 function App() {
-  const [showWelcome, setShowWelcome] = useState(true);
 
   return (
-    showWelcome ? (
-      <Welcome onStart={() => setShowWelcome(false)} />
-    ) : (
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Home />} />
-        </Routes>
-      </BrowserRouter>
-    )
-  );
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<Home/>} />
+        <Route path="/earth" element={<EarthApp />} />
+      </Routes>
+    </BrowserRouter>
+  )
 }
 
-export default App;
+export default App
