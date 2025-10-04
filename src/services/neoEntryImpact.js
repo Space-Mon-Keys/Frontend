@@ -437,27 +437,55 @@ function estimateBlastEffects(energy, altitude) {
    */
   
   // Window breakage: 1 kPa (1000 Pa)
-  const radiusWindowBreak = rangeForOverpressure(1000);
-  
+  let radiusWindowBreak = rangeForOverpressure(1000);
   // Structural damage: 20 kPa (20000 Pa) - serious building damage
-  const radiusStructuralDamage = rangeForOverpressure(20000);
-  
+  let radiusStructuralDamage = rangeForOverpressure(20000);
   // Severe destruction: 35 kPa (35000 Pa) - complete destruction of most buildings
-  const radiusSevereDestruction = rangeForOverpressure(35000);
-  
+  let radiusSevereDestruction = rangeForOverpressure(35000);
+  // Extreme destruction: 100 kPa (100000 Pa) - heavy reinforced concrete
+  let radiusExtreme = rangeForOverpressure(100000);
+
+  // --- Empirical attenuation for high-altitude meteor airbursts ---
+  // If burst altitude > 25 km, apply attenuation to all radii (empirical, for meteorites)
+  // See: SpaceApps 2025, ajuste físico-empírico para disipación atmosférica
+  const H_REF = 25; // km, reference height
+  const H_SCALE = 8; // km, attenuation scale
+  const EXP_P = 0.6; // exponent
+  const CAP_1KPA = 300; // km, max for 1 kPa
+  const h_burst_km = altitude / 1000;
+  let attenuation = 1.0;
+  if (h_burst_km > H_REF) {
+    attenuation = Math.exp(-Math.pow((h_burst_km - H_REF) / H_SCALE, EXP_P));
+    radiusWindowBreak *= attenuation;
+    radiusStructuralDamage *= attenuation;
+    radiusSevereDestruction *= attenuation;
+    radiusExtreme *= attenuation;
+  }
+  // Cap 1 kPa radius after attenuation
+  if (radiusWindowBreak > CAP_1KPA) radiusWindowBreak = CAP_1KPA;
+
   // Severity classification based on destruction radii
   let severity = 'minor';
   if (radiusSevereDestruction > 10) severity = 'catastrophic';
   else if (radiusSevereDestruction > 3) severity = 'major';
   else if (radiusStructuralDamage > 10) severity = 'significant';
   else if (radiusWindowBreak > 20) severity = 'moderate';
-  
+
+  /*
+    Ajuste empírico para meteoritos con bursts altos:
+    - Para bursts > 25 km, se aplica atenuación atmosférica adicional a todos los radios de daño.
+    - El radio de 1 kPa (rotura de ventanas) se limita a 300 km tras la atenuación.
+    - Basado en disipación atmosférica mayor que en explosiones nucleares.
+    - Parámetros: H_REF=25 km, H_SCALE=8 km, EXP_P=0.6, CAP_1KPA=300 km.
+  */
+
   return {
     energy: energy,
     altitude: altitude,
     radiusWindowBreak: radiusWindowBreak,
     radiusStructuralDamage: radiusStructuralDamage,
     radiusSevereDestruction: radiusSevereDestruction,
+    radiusExtreme: radiusExtreme,
     severity: severity
   };
 }

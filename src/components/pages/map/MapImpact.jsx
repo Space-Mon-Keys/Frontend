@@ -195,8 +195,8 @@ const MapImpact = ({
         radiusMeters: airburstData.radiusSevereDestruction * 1000,
         color: '#ff3d00',
         opacity: 0.9,
-        label: 'Destrucción severa',
-        description: 'Destrucción total de edificios (35 kPa)',
+        label: 'Daño estructural significativo',
+        description: 'Daños importantes en edificios (35 kPa)',
         idx: 0
       },
       {
@@ -204,21 +204,44 @@ const MapImpact = ({
         radiusMeters: airburstData.radiusStructuralDamage * 1000,
         color: '#ff9800',
         opacity: 0.7,
-        label: 'Daño estructural',
-        description: 'Daño serio a edificios (20 kPa)',
+        label: 'Daño estructural leve',
+        description: 'Daños moderados en estructuras (20 kPa)',
         idx: 1
       },
       {
-        radiusKm: airburstData.radiusWindowBreak,
-        radiusMeters: airburstData.radiusWindowBreak * 1000,
+        // Usar radiusWindowBreak2 si existe (2 kPa), si no, estimar a partir de radiusWindowBreak (1 kPa)
+        radiusKm: (() => {
+          if (typeof airburstData.radiusWindowBreak2 === 'number') {
+            return airburstData.radiusWindowBreak2;
+          } else if (typeof airburstData.radiusWindowBreak === 'number') {
+            // Estimar radio para 2 kPa usando ley de atenuación: r2 = r1 * (P1/P2)^(1/3.4)
+            const r1 = airburstData.radiusWindowBreak;
+            const P1 = 1, P2 = 2;
+            const r2 = r1 * Math.pow(P1 / P2, 1 / 3.4);
+            return r2;
+          } else {
+            return 0;
+          }
+        })(),
+        radiusMeters: (() => {
+          if (typeof airburstData.radiusWindowBreak2 === 'number') {
+            return airburstData.radiusWindowBreak2 * 1000;
+          } else if (typeof airburstData.radiusWindowBreak === 'number') {
+            const r1 = airburstData.radiusWindowBreak;
+            const P1 = 1, P2 = 2;
+            const r2 = r1 * Math.pow(P1 / P2, 1 / 3.4);
+            return r2 * 1000;
+          } else {
+            return 0;
+          }
+        })(),
         color: '#fff200',
         opacity: 0.5,
-        label: 'Rotura de ventanas',
-        description: 'Rotura de cristales (1 kPa)',
+        label: 'Rotura de cristales',
+        description: 'Posible rotura de cristales (2 kPa)',
         idx: 2
       }
     ].filter(zone => zone.radiusKm > 0); // Solo mostrar zonas con radio > 0
-    
     maxRadiusMeters = Math.max(...damageZones.map(z => z.radiusMeters));
   }
 
@@ -662,40 +685,68 @@ const MapImpact = ({
         fontSize: 15
       }}>
         <h3 style={{ color: '#ff3d00', marginTop: 0, fontSize: 18, marginBottom: 18, letterSpacing: 0.5 }}>Consecuencias del Impacto</h3>
-        <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <li style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-            <span style={{ fontSize: 18, color: '#ff3d00', marginTop: 2 }}>💥</span>
-            <span><strong>Destrucción local:</strong> Todo en el área cercana al impacto es destruido instantáneamente.</span>
-          </li>
-          <li style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-            <span style={{ fontSize: 18, color: '#ff9800', marginTop: 2 }}>🔥</span>
-            <span><strong>Incendios masivos:</strong> El calor extremo genera incendios forestales y urbanos en grandes extensiones.</span>
-          </li>
-          <li style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-            <span style={{ fontSize: 18, color: '#2979ff', marginTop: 2 }}>🌊</span>
-            <span><strong>Tsunamis:</strong> Si el impacto es en el mar, se generan olas gigantes que afectan costas lejanas.</span>
-          </li>
-          <li style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-            <span style={{ fontSize: 18, color: '#00e676', marginTop: 2 }}>🌪️</span>
-            <span><strong>Ondas de choque y vientos extremos:</strong> El aire es desplazado violentamente, causando destrucción a gran distancia.</span>
-          </li>
-          <li style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-            <span style={{ fontSize: 18, color: '#d500f9', marginTop: 2 }}>🌫️</span>
-            <span><strong>Oscurecimiento global:</strong> El polvo y los escombros en la atmósfera bloquean la luz solar, afectando el clima.</span>
-          </li>
-          <li style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-            <span style={{ fontSize: 18, color: '#fff200', marginTop: 2 }}>🌡️</span>
-            <span><strong>Cambios climáticos:</strong> Descenso de temperaturas y alteraciones en los patrones de lluvia durante meses o años.</span>
-          </li>
-          <li style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-            <span style={{ fontSize: 18, color: '#00bcd4', marginTop: 2 }}>🦖</span>
-            <span><strong>Extinciones masivas:</strong> La vida animal y vegetal puede verse gravemente afectada, como ocurrió con los dinosaurios.</span>
-          </li>
-          <li style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-            <span style={{ fontSize: 18, color: '#7c4dff', marginTop: 2 }}>🌎</span>
-            <span><strong>Terremoto generado:</strong> Magnitud estimada <strong>{earthquakeMag?.toFixed(1)}</strong> en la escala Richter (por la energía liberada).</span>
-          </li>
-        </ul>
+        {hasAirburst && airburstData ? (
+          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <li style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+              <span style={{ fontSize: 18, color: '#ff3d00', marginTop: 2 }}>💥</span>
+              <span><strong>Daño estructural significativo (35 kPa):</strong> hasta <strong>{airburstData.radiusSevereDestruction?.toFixed(1) ?? '-'} km</strong> del epicentro.</span>
+            </li>
+            <li style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+              <span style={{ fontSize: 18, color: '#ff9800', marginTop: 2 }}>🏚️</span>
+              <span><strong>Daño estructural leve (20 kPa):</strong> hasta <strong>{airburstData.radiusStructuralDamage?.toFixed(1) ?? '-'} km</strong> del epicentro.</span>
+            </li>
+            <li style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+              <span style={{ fontSize: 18, color: '#fff200', marginTop: 2 }}>🪟</span>
+              <span><strong>Rotura de cristales (2 kPa):</strong> hasta <strong>{(() => {
+                if (typeof airburstData.radiusWindowBreak === 'number') {
+                  return airburstData.radiusWindowBreak.toFixed(1);
+                } else if (typeof airburstData.radiusWindowBreak === 'number') {
+                  const r1 = airburstData.radiusWindowBreak;
+                  const P1 = 1, P2 = 2;
+                  const r2 = r1 * Math.pow(P1 / P2, 1 / 3.4);
+                  return r2.toFixed(1);
+                } else {
+                  return '-';
+                }
+              })()} km</strong> del epicentro.</span>
+            </li>
+          </ul>
+        ) : (
+          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <li style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+              <span style={{ fontSize: 18, color: '#ff3d00', marginTop: 2 }}>💥</span>
+              <span><strong>Destrucción local:</strong> Todo en el área cercana al impacto es destruido instantáneamente.</span>
+            </li>
+            <li style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+              <span style={{ fontSize: 18, color: '#ff9800', marginTop: 2 }}>🔥</span>
+              <span><strong>Incendios masivos:</strong> El calor extremo genera incendios forestales y urbanos en grandes extensiones.</span>
+            </li>
+            <li style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+              <span style={{ fontSize: 18, color: '#2979ff', marginTop: 2 }}>🌊</span>
+              <span><strong>Tsunamis:</strong> Si el impacto es en el mar, se generan olas gigantes que afectan costas lejanas.</span>
+            </li>
+            <li style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+              <span style={{ fontSize: 18, color: '#00e676', marginTop: 2 }}>🌪️</span>
+              <span><strong>Ondas de choque y vientos extremos:</strong> El aire es desplazado violentamente, causando destrucción a gran distancia.</span>
+            </li>
+            <li style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+              <span style={{ fontSize: 18, color: '#d500f9', marginTop: 2 }}>🌫️</span>
+              <span><strong>Oscurecimiento global:</strong> El polvo y los escombros en la atmósfera bloquean la luz solar, afectando el clima.</span>
+            </li>
+            <li style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+              <span style={{ fontSize: 18, color: '#fff200', marginTop: 2 }}>🌡️</span>
+              <span><strong>Cambios climáticos:</strong> Descenso de temperaturas y alteraciones en los patrones de lluvia durante meses o años.</span>
+            </li>
+            <li style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+              <span style={{ fontSize: 18, color: '#00bcd4', marginTop: 2 }}>🦖</span>
+              <span><strong>Extinciones masivas:</strong> La vida animal y vegetal puede verse gravemente afectada, como ocurrió con los dinosaurios.</span>
+            </li>
+            <li style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+              <span style={{ fontSize: 18, color: '#7c4dff', marginTop: 2 }}>🌎</span>
+              <span><strong>Terremoto generado:</strong> Magnitud estimada <strong>{earthquakeMag?.toFixed(1)}</strong> en la escala Richter (por la energía liberada).</span>
+            </li>
+          </ul>
+        )}
       </div>
     </div>
   );
