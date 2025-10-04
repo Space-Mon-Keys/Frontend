@@ -1,0 +1,75 @@
+.scenarios-container {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #0d133d 0%, #512da8 100%);
+  color: #e0e7ff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 0;
+}
+
+h2 {
+  color: #7c4dff;
+  margin-bottom: 2rem;
+  font-size: 2rem;
+}
+
+.scenarios-list {
+  display: flex;
+  gap: 2rem;
+  margin-bottom: 2.5rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.scenario-card {
+  background: rgba(30, 30, 60, 0.85);
+  border-radius: 18px;
+  box-shadow: 0 4px 16px 0 rgba(31, 38, 135, 0.25);
+  padding: 18px 12px;
+  width: 200px;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: border 0.2s, transform 0.2s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.scenario-card.selected {
+  border: 2px solid #00bcd4;
+  transform: scale(1.05);
+}
+
+.scenario-img {
+  width: 100%;
+  height: 110px;
+  object-fit: cover;
+  border-radius: 12px;
+  margin-bottom: 1rem;
+  background: #222;
+}
+
+.scenario-info h3 {
+  color: #b388ff;
+  margin: 0 0 0.5rem 0;
+}
+
+.select-btn {
+  background: linear-gradient(90deg, #7c4dff 0%, #00bcd4 100%);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 0.75rem 2rem;
+  font-size: 1.1rem;
+  font-weight: bold;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(124, 77, 255, 0.2);
+  transition: background 0.3s, transform 0.2s;
+}
+
+.select-btn:hover {
+  background: linear-gradient(90deg, #00bcd4 0%, #7c4dff 100%);
+  transform: scale(1.05);
+}
