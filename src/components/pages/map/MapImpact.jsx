@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { energyToMagnitude, findSimilarEarthquakes } from '../../../services/earthquakeEnergyService';
-import { assessNEOImpact, MATERIAL_PRESETS } from '../../../services/neoEntryImpact';
+import { assessNEOImpact } from '../../../services/neoEntryImpact';
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 
@@ -30,15 +30,16 @@ function FitCircleBounds({ center, radiusMeters }) {
   return null;
 }
 
-// Parámetros de zonas de impacto (radio relativo, color, opacidad, label, descripción)
+// Parámetros de zonas de impacto terrestre (radio relativo al cráter, color, opacidad, label, descripción)
+// Basado en modelos de impacto de Collins et al. y el Earth Impact Effects Program
 const impactZones = [
-  { relRadius: 0.1, color: '#fff200', opacity: 1.0, label: 'Vaporización', description: 'Todo se vaporiza instantáneamente' },
-  { relRadius: 0.3, color: '#ff9800', opacity: 0.95, label: 'Fusión', description: 'Rocas fundidas, temperaturas extremas' },
-  { relRadius: 1.0, color: '#ff3d00', opacity: 0.9, label: 'Cráter', description: 'Excavación directa del impacto' },
-  { relRadius: 2.0, color: '#d500f9', opacity: 0.7, label: 'Eyección', description: 'Material expulsado y escombros' },
-  { relRadius: 4.0, color: '#00e676', opacity: 0.6, label: 'Terremotos severos', description: 'Daño estructural masivo' },
-  { relRadius: 8.0, color: '#2979ff', opacity: 0.5, label: 'Ondas sísmicas', description: 'Terremotos moderados' },
-  { relRadius: 12.0, color: '#00bcd4', opacity: 0.4, label: 'Onda de choque', description: 'Efectos atmosféricos' }
+  { relRadius: 0.3, color: '#fff200', opacity: 1.0, label: 'Cráter transiente', description: 'Vaporización y fusión de rocas, temperaturas >10,000°C' },
+  { relRadius: 1.0, color: '#ff3d00', opacity: 0.9, label: 'Cráter final', description: 'Excavación completa, colapso de paredes' },
+  { relRadius: 2.5, color: '#ff9800', opacity: 0.8, label: 'Eyecta primaria', description: 'Material fundido y roca expulsada a alta velocidad' },
+  { relRadius: 4.0, color: '#d500f9', opacity: 0.7, label: 'Eyecta secundaria', description: 'Escombros y polvo, cráteres secundarios' },
+  { relRadius: 6.0, color: '#00e676', opacity: 0.6, label: 'Zona de radiación térmica', description: 'Incendios masivos, ignición de material combustible' },
+  { relRadius: 10.0, color: '#2979ff', opacity: 0.5, label: 'Onda de choque atmosférica', description: 'Daño estructural severo, vientos >200 km/h' },
+  { relRadius: 15.0, color: '#00bcd4', opacity: 0.4, label: 'Ondas sísmicas', description: 'Terremotos, colapso de estructuras débiles' }
 ];
 
 function LocationMarker({ onSelect, position }) {
@@ -60,22 +61,15 @@ const DEFAULT_ZOOM = 2;
  * @param {number} props.velocity - Velocidad de impacto (m/s)
  * @param {number} props.density - Densidad del material (kg/m³)
  * @param {number} props.entryAngle - Ángulo de entrada desde horizontal (grados), default 45
- * @param {number} props.energyMt - Energía precalculada (megatones TNT) - OPCIONAL
- * @param {number} props.initialLat - Latitud inicial del punto de impacto
- * @param {number} props.initialLng - Longitud inicial del punto de impacto
+// energyMt, initialLat, initialLng eliminados por no usarse
  */
 const MapImpact = ({ 
   diameter = 50,
   velocity = 20000,
   density = 3000,
-  entryAngle = 45,
-  energyMt,
-  initialLat, 
-  initialLng 
+  entryAngle = 45
 }) => {
-  const [impactPos, setImpactPos] = useState(
-    initialLat != null && initialLng != null ? [initialLat, initialLng] : null
-  );
+  const [impactPos, setImpactPos] = useState(null);
 
   // Convertir parámetros de HOME a formato NEO
   const neoParams = useMemo(() => {
@@ -85,21 +79,19 @@ const MapImpact = ({
     const vImpact = velocity / 1000; // convertir a km/s
     const vInf = Math.max(5, Math.sqrt(Math.max(0, vImpact * vImpact - vEscape * vEscape)));
     
-    // density → material
-    // Determinar material más cercano basado en densidad
-    let material = 'stony';
+    // Construir objeto material según densidad
+    let materialObj;
     if (density < 1500) {
-      material = 'comet';
+      materialObj = { density, strength: 1e5, name: 'Cometario (hielo)' };
     } else if (density > 5000) {
-      material = 'iron';
+      materialObj = { density, strength: 2e6, name: 'Metálico' };
     } else {
-      material = 'stony';
+      materialObj = { density, strength: 2e5, name: 'Rocoso' };
     }
-    
     return {
       vInfinity: vInf,
       diameter: diameter,
-      material: material,
+      material: materialObj,
       entryAngle: entryAngle,
       densityOriginal: density
     };
@@ -118,19 +110,33 @@ const MapImpact = ({
     });
   }, [neoParams]);
 
-  // Determinar si hubo impacto terrestre o solo airburst
-  const hasGroundImpact = impactScenario.trajectory.impact.groundImpact || 
-                          (!impactScenario.trajectory.impact.airburst && impactScenario.trajectory.impact.mass > 0);
+  // Determinar si hubo impacto terrestre real (robustez extra)
+  const impactData = impactScenario.trajectory.impact;
+  // Normalizar outcome a minúsculas para comparar
+  const outcomeStr = (impactScenario.outcome || '').toLowerCase();
+  // Robustez: nunca hay impacto si outcome indica ablation/desintegración, o masa <= 0, o groundImpact no es true
+  const hasGroundImpact = (
+    impactData &&
+    impactData.groundImpact === true &&
+    typeof impactData.mass === 'number' &&
+    impactData.mass > 0 &&
+    !outcomeStr.includes('ablation') &&
+    !outcomeStr.includes('desintegr') &&
+    !outcomeStr.includes('burn')
+  );
+  // Log temporal para depuración de edge cases
+  if (impactData && (impactData.groundImpact || impactData.mass === 0 || outcomeStr.includes('ablation'))) {
+    // eslint-disable-next-line no-console
+    console.debug('[MapImpact] groundImpact:', impactData.groundImpact, 'mass:', impactData.mass, 'outcome:', impactScenario.outcome, 'hasGroundImpact:', hasGroundImpact);
+  }
   
   // Datos del airburst si existe
   const airburstData = impactScenario.blast || null;
 
   // Usar energía apropiada según el tipo de evento
-  const finalEnergyMt = energyMt || 
-                        (hasGroundImpact 
-                          ? (impactScenario.trajectory.impact.impactEnergy || 0.001)
-                          : (airburstData?.energy || impactScenario.trajectory.impact.airburstEnergy || 0.001)
-                        );
+  const finalEnergyMt = hasGroundImpact 
+    ? (impactScenario.trajectory.impact.impactEnergy || 0.001)
+    : (airburstData?.energy || impactScenario.trajectory.impact.airburstEnergy || 0.001);
   
   const craterRadiusKm = hasGroundImpact ? calculateCraterRadiusKm(finalEnergyMt) : 0;
   // Solo calcular magnitud de terremoto si hay impacto terrestre
@@ -149,29 +155,76 @@ const MapImpact = ({
     return () => { cancelled = true; };
   }, [earthquakeMag, hasGroundImpact]);
 
-  // Radio del círculo más grande (última zona)
-  const maxZone = impactZones[impactZones.length - 1];
-  const maxRadiusMeters = craterRadiusKm * maxZone.relRadius * 1000;
+  // Determinar si hay airburst (sin impacto terrestre)
+  const hasAirburst = !hasGroundImpact && airburstData && airburstData.altitude;
 
-  // Solo mostrar círculos si hay impacto terrestre (no solo airburst)
-  const showImpactZones = hasGroundImpact;
+  // Definir zonas de daño según el tipo de evento
+  let damageZones = [];
+  let maxRadiusMeters = 0;
+
+  if (hasGroundImpact) {
+    // Para impactos terrestres: usar radios relativos al cráter
+    damageZones = impactZones.map((zone, idx) => ({
+      ...zone,
+      radiusKm: craterRadiusKm * zone.relRadius,
+      radiusMeters: craterRadiusKm * zone.relRadius * 1000,
+      idx
+    }));
+    maxRadiusMeters = craterRadiusKm * impactZones[impactZones.length - 1].relRadius * 1000;
+  } else if (hasAirburst) {
+    // Para airbursts: usar radios científicos basados en sobrepresión
+    damageZones = [
+      {
+        radiusKm: airburstData.radiusSevereDestruction,
+        radiusMeters: airburstData.radiusSevereDestruction * 1000,
+        color: '#ff3d00',
+        opacity: 0.9,
+        label: 'Destrucción severa',
+        description: 'Destrucción total de edificios (35 kPa)',
+        idx: 0
+      },
+      {
+        radiusKm: airburstData.radiusStructuralDamage,
+        radiusMeters: airburstData.radiusStructuralDamage * 1000,
+        color: '#ff9800',
+        opacity: 0.7,
+        label: 'Daño estructural',
+        description: 'Daño serio a edificios (20 kPa)',
+        idx: 1
+      },
+      {
+        radiusKm: airburstData.radiusWindowBreak,
+        radiusMeters: airburstData.radiusWindowBreak * 1000,
+        color: '#fff200',
+        opacity: 0.5,
+        label: 'Rotura de ventanas',
+        description: 'Rotura de cristales (1 kPa)',
+        idx: 2
+      }
+    ].filter(zone => zone.radiusKm > 0); // Solo mostrar zonas con radio > 0
+    
+    maxRadiusMeters = Math.max(...damageZones.map(z => z.radiusMeters));
+  }
+
+  // Mostrar círculos si hay impacto terrestre O airburst
+  const showDamageZones = hasGroundImpact || hasAirburst;
 
   // Estado para mostrar/ocultar todas las zonas
   const [showAllZones, setShowAllZones] = useState(true);
   // Estado para overlays individuales (siempre en el mismo orden)
   const [zoneVisibility, setZoneVisibility] = useState(
-    impactZones.map(() => true)
+    damageZones.map(() => true)
   );
 
   // Cuando se activa "Todas las zonas", todos los overlays individuales se activan
   useEffect(() => {
     if (showAllZones) {
-      setZoneVisibility(impactZones.map(() => true));
+      setZoneVisibility(damageZones.map(() => true));
     }
-  }, [showAllZones]);
+  }, [showAllZones, damageZones.length]);
 
   // Si se desactiva "Todas las zonas", oculta todos los círculos
-  const visibleZones = showAllZones ? zoneVisibility : impactZones.map(() => false);
+  const visibleZones = showAllZones ? zoneVisibility : damageZones.map(() => false);
 
   // Estados para la leyenda arrastrable
   const [legendPos, setLegendPos] = useState({ x: null, y: null });
@@ -231,18 +284,18 @@ const MapImpact = ({
           attribution="&copy; OpenStreetMap contributors & CartoDB"
         />
         <LocationMarker onSelect={setImpactPos} position={impactPos} />
-        {/* Ajusta el zoom al círculo más grande solo si hay impacto */}
-        {impactPos && showImpactZones && <FitCircleBounds center={impactPos} radiusMeters={maxRadiusMeters} />}
-        {/* Renderizar círculos de mayor a menor radio para que los pequeños queden encima - SOLO si hay impacto */}
-        {impactPos && showImpactZones && impactZones
-          .map((zone, idx) => ({ zone, idx, r: craterRadiusKm * zone.relRadius * 1000 }))
+        {/* Ajusta el zoom al círculo más grande solo si hay daños */}
+        {impactPos && showDamageZones && <FitCircleBounds center={impactPos} radiusMeters={maxRadiusMeters} />}
+        {/* Renderizar círculos de mayor a menor radio para que los pequeños queden encima */}
+        {impactPos && showDamageZones && damageZones
+          .map((zone) => ({ ...zone }))
           .filter(({ idx }) => visibleZones[idx])
-          .sort((a, b) => b.r - a.r) // mayor a menor radio (grandes primero, atrás)
-          .map(({ zone, idx, r }) => (
+          .sort((a, b) => b.radiusMeters - a.radiusMeters) // mayor a menor radio (grandes primero, atrás)
+          .map((zone) => (
             <Circle
-              key={`circle-${idx}`}
+              key={`circle-${zone.idx}`}
               center={impactPos}
-              radius={r}
+              radius={zone.radiusMeters}
               pathOptions={{ 
                 color: zone.color, 
                 fillColor: zone.color, 
@@ -253,8 +306,8 @@ const MapImpact = ({
           ))
         }
       </MapContainer>
-      {/* Panel de control de capas personalizado - SOLO si hay impacto terrestre */}
-      {impactPos && showImpactZones && (
+      {/* Panel de control de capas personalizado - para impactos terrestres o airbursts */}
+      {impactPos && showDamageZones && (
         <div style={{
           position: 'fixed',
           top: 20,
@@ -332,9 +385,9 @@ const MapImpact = ({
                 paddingLeft: 8,
                 borderLeft: '2px solid rgba(124,77,255,0.2)'
               }}>
-                {impactZones.map((zone, idx) => (
+                {damageZones.map((zone) => (
                   <label 
-                    key={idx}
+                    key={zone.idx}
                     style={{ 
                       display: 'flex', 
                       alignItems: 'center', 
@@ -346,11 +399,11 @@ const MapImpact = ({
                   >
                     <input 
                       type="checkbox" 
-                      checked={visibleZones[idx]}
+                      checked={visibleZones[zone.idx]}
                       disabled={!showAllZones}
                       onChange={(e) => {
                         const newVis = [...zoneVisibility];
-                        newVis[idx] = e.target.checked;
+                        newVis[zone.idx] = e.target.checked;
                         setZoneVisibility(newVis);
                       }}
                       style={{ cursor: showAllZones ? 'pointer' : 'not-allowed', width: 14, height: 14 }}
@@ -371,7 +424,7 @@ const MapImpact = ({
           )}
         </div>
       )}
-      {/* Cuadro de datos físicos abajo a la derecha */}
+      {/* Bloque unificado de impacto */}
       {impactPos && (
         <div style={{
           position: 'fixed',
@@ -382,89 +435,95 @@ const MapImpact = ({
           borderRadius: 12,
           border: '2px solid #7c4dff',
           boxShadow: '0 4px 24px 0 rgba(44,0,80,0.18)',
-          padding: '8px 12px',
-          minWidth: 260,
-          maxWidth: '90vw',
+          padding: '18px 18px 24px 18px',
+          minWidth: 320,
+          maxWidth: '95vw',
           color: '#e0e7ff',
           fontSize: 15,
           display: 'flex',
           flexDirection: 'column',
-          gap: 12,
+          gap: 14,
           alignItems: 'flex-start',
           pointerEvents: 'auto',
           transition: 'all 0.2s'
         }}>
-          <div style={{ fontWeight: 700, color: '#7c4dff', fontSize: 15, marginBottom: 2, letterSpacing: 0.2 }}>Datos del Impacto</div>
-          
-          {/* Datos del objeto - parámetros de HOME */}
+          <div style={{ fontWeight: 700, color: '#7c4dff', fontSize: 18, marginBottom: 2, letterSpacing: 0.2 }}>Impacto del Asteroide</div>
           <div style={{ fontWeight: 600, color: '#fff', fontSize: 14, borderBottom: '1px solid rgba(124,77,255,0.2)', paddingBottom: 8, width: '100%' }}>
             <span style={{ color: '#b2f7ef', fontWeight: 700 }}>Objeto:</span> ⌀{diameter}m, {(neoParams.densityOriginal || density).toLocaleString()} kg/m³
+            <span style={{ marginLeft: 16, color: '#fff200', fontWeight: 700 }}>Velocidad:</span> {(velocity / 1000).toFixed(1)} km/s
+            <span style={{ marginLeft: 16, color: '#ff9800', fontWeight: 700 }}>Masa:</span> {(impactScenario.body.mass / 1000).toLocaleString(undefined, {maximumFractionDigits: 0})} ton
+            <span style={{ marginLeft: 16, color: '#d500f9', fontWeight: 700 }}>Ángulo:</span> {entryAngle}°
           </div>
-          
-          <div style={{ fontWeight: 600, color: '#fff', fontSize: 14 }}>
-            <span style={{ color: '#fff200', fontWeight: 700 }}>Velocidad:</span> {(velocity / 1000).toFixed(1)} km/s
-          </div>
-          
-          <div style={{ fontWeight: 600, color: '#fff', fontSize: 14 }}>
-            <span style={{ color: '#ff9800', fontWeight: 700 }}>Masa:</span> {(impactScenario.body.mass / 1000).toLocaleString(undefined, {maximumFractionDigits: 0})} ton
-          </div>
-          
-          <div style={{ fontWeight: 600, color: '#fff', fontSize: 14 }}>
-            <span style={{ color: '#d500f9', fontWeight: 700 }}>Ángulo entrada:</span> {entryAngle}°
-          </div>
-          
           <div style={{ fontWeight: 600, color: '#fff', fontSize: 15 }}>
-            <span style={{ color: '#fff200', fontWeight: 700 }}>Energía:</span> {finalEnergyMt.toFixed(3)} Mt TNT
+            <span style={{ color: '#fff200', fontWeight: 700 }}>Energía total:</span> {finalEnergyMt.toFixed(3)} Mt TNT
           </div>
-          
-          {/* Resultado del impacto */}
-          <div style={{ fontWeight: 600, color: '#fff', fontSize: 14, marginTop: 4 }}>
-            <span style={{ color: '#ff3d00', fontWeight: 700 }}>Resultado:</span>{' '}
-            <span style={{ color: impactScenario.trajectory.impact.airburst ? '#00e676' : '#ff3d00' }}>
-              {impactScenario.outcome}
-            </span>
+          <div style={{ fontWeight: 600, color: '#fff', fontSize: 14, marginTop: 2 }}>
+            <span style={{ color: impactScenario.trajectory.impact.airburst ? '#00e676' : '#ff3d00', fontWeight: 700 }}>Resultado:</span>{' '}
+            {impactScenario.outcome}
           </div>
-          
-          {/* Datos de airburst si existe */}
-          {airburstData && (
-            <>
-              <div style={{ fontWeight: 600, color: '#fff', fontSize: 14 }}>
-                <span style={{ color: '#00e676', fontWeight: 700 }}>Alt. explosión:</span> {(airburstData.altitude / 1000).toFixed(1)} km
-              </div>
-              <div style={{ fontWeight: 600, color: '#fff', fontSize: 14 }}>
-                <span style={{ color: '#d500f9', fontWeight: 700 }}>Radio daños:</span> {airburstData.radiusWindowBreak.toFixed(1)} km (ventanas)
-              </div>
-            </>
-          )}
-          
-          {/* Solo mostrar terremoto si hay impacto terrestre */}
-          {hasGroundImpact && (
-            <>
-              <div style={{ fontWeight: 600, color: '#fff', fontSize: 15 }}>
-                <span style={{ color: '#ff3d00', fontWeight: 700 }}>Magnitud eq.:</span> {earthquakeMag?.toFixed(1)}
-              </div>
-              
-              {similarQuakes.length > 0 && (
-                <div style={{ marginTop: 6, fontSize: 13, color: '#b2f7ef' }}>
-                  <div style={{ fontWeight: 600, color: '#7c4dff', marginBottom: 2 }}>Terremotos similares:</div>
-                  <ul style={{ margin: 0, paddingLeft: 16 }}>
-                    {similarQuakes.map(q => (
-                      <li key={q.id} style={{ marginBottom: 2 }}>
-                        <a href={q.url} target="_blank" rel="noopener noreferrer" style={{ color: '#fff200', textDecoration: 'underline', fontWeight: 500 }}>
-                          {q.place || 'Terremoto'}
-                        </a>{' '}
-                        <span style={{ color: '#ff3d00', fontWeight: 600 }}>M{q.magnitude}</span>{' '}
-                        <span style={{ color: '#b2f7ef' }}>({new Date(q.time).getFullYear()})</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+          {/* Mostrar siempre bloque de airburst si outcome es ablation, aunque no haya datos detallados */}
+          {(airburstData || outcomeStr.includes('ablation') || outcomeStr.includes('desintegr') || outcomeStr.includes('burn')) && (
+            <div style={{ fontWeight: 600, color: '#00e676', fontSize: 14 }}>
+              <span>
+                Airburst
+                {airburstData && airburstData.altitude ? ` a ${(airburstData.altitude / 1000).toFixed(1)} km` : ''}
+              </span>
+              {airburstData && airburstData.radiusWindowBreak ? (
+                <span style={{ marginLeft: 12, color: '#d500f9' }}>
+                  Radio daños: {airburstData.radiusWindowBreak.toFixed(1)} km (ventanas)
+                </span>
+              ) : null}
+              {(!airburstData || !airburstData.altitude) && (
+                <span style={{ marginLeft: 12, color: '#b2f7ef', fontSize: 13 }}>
+                  (El objeto se desintegró en la atmósfera; no hay datos detallados de la explosión aérea)
+                </span>
               )}
-            </>
+            </div>
           )}
+          {hasGroundImpact && (
+            <div style={{ fontWeight: 600, color: '#ff3d00', fontSize: 15 }}>
+              <span>Magnitud sísmica estimada: <strong>{earthquakeMag?.toFixed(1)}</strong></span>
+              {similarQuakes.length > 0 && (
+                <span style={{ display: 'block', marginTop: 6, color: '#b2f7ef', fontSize: 13 }}>
+                  Terremotos similares: {similarQuakes.map(q => `${q.place || 'Terremoto'} (M${q.magnitude}, ${new Date(q.time).getFullYear()})`).join(' | ')}
+                </span>
+              )}
+            </div>
+          )}
+          <div style={{ marginTop: 10, width: '100%' }}>
+            <h4 style={{ color: '#ff3d00', margin: 0, fontSize: 16, marginBottom: 10, letterSpacing: 0.5 }}>
+              {hasGroundImpact ? 'Zonas de Daño (Impacto Terrestre)' : hasAirburst ? 'Zonas de Daño (Airburst)' : 'Consecuencias'}
+            </h4>
+            {showDamageZones ? (
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {damageZones.map((zone) => (
+                  <li key={zone.idx} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                    <div style={{
+                      width: 12,
+                      height: 12,
+                      borderRadius: '50%',
+                      background: zone.color,
+                      border: '2px solid rgba(255,255,255,0.4)',
+                      flexShrink: 0,
+                      marginTop: 4
+                    }} />
+                    <span>
+                      <strong style={{ color: zone.color }}>{zone.label}:</strong> {zone.description}
+                      {zone.radiusKm && <span style={{ color: '#b2f7ef', marginLeft: 8 }}>(~{zone.radiusKm.toFixed(1)} km)</span>}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <li><span style={{ color: '#ff3d00', fontSize: 18 }}>💥</span> <strong>Destrucción local:</strong> Todo en el área cercana al impacto es destruido instantáneamente.</li>
+                <li><span style={{ color: '#ff9800', fontSize: 18 }}>🔥</span> <strong>Incendios masivos:</strong> El calor extremo genera incendios forestales y urbanos en grandes extensiones.</li>
+                <li><span style={{ color: '#00e676', fontSize: 18 }}>�️</span> <strong>Ondas de choque y vientos extremos:</strong> El aire es desplazado violentamente, causando destrucción a gran distancia.</li>
+              </ul>
+            )}
+          </div>
         </div>
       )}
-      {/* Leyenda de zonas de impacto arrastrable */}
       <div
         ref={legendRef}
         style={{
@@ -507,12 +566,12 @@ const MapImpact = ({
             setOffset({ x: e.clientX - rect.left, y: e.clientY - rect.top });
           }}
         >
-          ⠿ {showImpactZones ? 'Zonas de Impacto' : 'Sin Impacto Terrestre'}
+          ⠿ {showDamageZones ? (hasGroundImpact ? 'Zonas de Impacto' : 'Zonas de Airburst') : 'Sin Impacto'}
         </div>
-        {showImpactZones ? (
+        {showDamageZones ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {impactZones.map((zone, idx) => (
-              <div key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+            {damageZones.map((zone) => (
+              <div key={zone.idx} style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
                 <div style={{
                   width: 14,
                   height: 14,
@@ -556,12 +615,17 @@ const MapImpact = ({
       </div>
       <div style={{ marginTop: 16, color: "#e0e7ff", textAlign: "center" }}>
         <p>Haz click en el mapa para seleccionar el epicentro del impacto.</p>
-        {impactPos && showImpactZones && (
+        {impactPos && hasGroundImpact && (
           <p>
             Radio estimado del cráter: <strong>{craterRadiusKm.toFixed(2)} km</strong> (Energía: {finalEnergyMt.toFixed(2)} Mt)
           </p>
         )}
-        {impactPos && !showImpactZones && (
+        {impactPos && hasAirburst && (
+          <p style={{ color: '#ff9800', fontWeight: 'bold' }}>
+            Airburst a {(airburstData.altitude / 1000).toFixed(1)} km de altitud - {airburstData.energy.toFixed(2)} Mt
+          </p>
+        )}
+        {impactPos && !showDamageZones && (
           <p style={{ color: '#ff9800', fontWeight: 'bold' }}>
             ⚠️ El objeto se desintegró en la atmósfera
           </p>

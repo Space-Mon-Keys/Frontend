@@ -36,38 +36,6 @@ const H_ENTRY = 100000;
 /** Minimum velocity threshold to stop integration (m/s) */
 const MIN_VELOCITY = 300;
 
-// ============================================================================
-// MATERIAL PRESETS
-// ============================================================================
-
-/**
- * @typedef {Object} MaterialProperties
- * @property {number} density - Bulk density (kg/m³)
- * @property {number} strength - Material strength / fragmentation threshold (Pa)
- * @property {string} name - Material name
- */
-
-/**
- * Predefined material properties for common NEO compositions
- * @type {Object.<string, MaterialProperties>}
- */
-const MATERIAL_PRESETS = {
-  stony: {
-    name: 'Stony (S-type asteroid)',
-    density: 3000,
-    strength: 2e5 // 200 kPa
-  },
-  iron: {
-    name: 'Iron (M-type asteroid)',
-    density: 7800,
-    strength: 2e6 // 2 MPa
-  },
-  comet: {
-    name: 'Cometary (icy)',
-    density: 800,
-    strength: 1e5 // 100 kPa
-  }
-};
 
 // ============================================================================
 // UTILITY FUNCTIONS
@@ -154,32 +122,24 @@ function calculateEntryConditions(vInfinity, entryAngleDeg = 45) {
  */
 
 /**
- * Calculate body properties from diameter and material
+ * Calculate body properties from diameter and material properties
  * @param {number} diameter - Body diameter (m)
- * @param {string|MaterialProperties} material - Material preset name or custom properties
+ * @param {Object} material - Object with density (kg/m³), strength (Pa), and name (string)
  * @returns {BodyProperties} Body properties
  */
-function calculateBodyProperties(diameter, material = 'stony') {
-  // Get material properties
-  let matProps;
-  if (typeof material === 'string') {
-    matProps = MATERIAL_PRESETS[material] || MATERIAL_PRESETS.stony;
-  } else {
-    matProps = material;
-  }
-  
+function calculateBodyProperties(diameter, material) {
+  // material: { density, strength, name }
   const radius = diameter / 2;
   const area = Math.PI * radius * radius;
   const volume = (4/3) * Math.PI * radius * radius * radius;
-  const mass = matProps.density * volume;
-  
+  const mass = material.density * volume;
   return {
     diameter: diameter,
     mass: mass,
     area: area,
-    density: matProps.density,
-    strength: matProps.strength,
-    material: matProps.name || 'custom'
+    density: material.density,
+    strength: material.strength,
+    material: material.name || 'custom'
   };
 }
 
@@ -390,7 +350,12 @@ function integrateTrajectory(entryConditions, bodyProperties, options = {}) {
 
 /**
  * Estimate ground overpressure effects for airburst
- * Based on simplified scaling laws for nuclear airbursts
+ * Based on Glasstone & Dolan (1977) nuclear test data and Collins et al. (2017) airburst models
+ * Uses yield scaling from 1 kt reference explosions
+ * 
+ * Reference: Collins et al. (2017) "A numerical assessment of simple airblast models of impact airbursts"
+ * Meteoritics & Planetary Science, 52(8), 1542-1560. doi:10.1111/maps.12873
+ * 
  * @param {number} energy - Blast energy (megatons TNT)
  * @param {number} altitude - Burst altitude (m)
  * @returns {BlastEffects} Blast effect radii
@@ -407,33 +372,85 @@ function estimateBlastEffects(energy, altitude) {
     };
   }
   
-  // Convert altitude to km
-  const h_km = altitude / 1000;
+  // Convert to consistent units
+  const h_km = altitude / 1000; // Altitude in km
+  const E_kt = energy * 1000; // Energy in kilotons
   
-  // Scaling: effective yield reduces with altitude
-  // Simple approximation: eff_energy = energy * exp(-h/h_opt)
-  // Optimal burst height scales as h_opt ≈ 0.5 * energy^(1/3) km
-  const h_opt = 0.5 * Math.pow(energy, 1/3);
-  const efficiency = Math.exp(-h_km / (h_opt + 1));
-  const effectiveEnergy = energy * efficiency;
+  /**
+   * Overpressure as a function of range for 1 kt explosion at given altitude
+   * Based on Collins et al. (2017) Equation 7, which provides a better fit to
+   * Glasstone & Dolan (1977) nuclear test data over a greater altitude range.
+   * 
+   * Peak overpressure p(r) in Pa at range r (m) for 1 kt explosion at altitude zb (m):
+   * p(r) = 3.14e11 / ((2.5e5 + r^2.5) * (1 + zb/6789)^2)
+   * 
+   * For yields other than 1 kt, use scaling:
+   * - Scaled range: r_scaled = r / E^(1/3)
+   * - Scaled overpressure: p_scaled = p * E^(2/3)
+   */
   
-  // Scaling laws (very approximate):
-  // Overpressure radius R ∝ E^(1/3) / P^(1/3)
-  // Window breakage: ~3 kPa overpressure
-  // Structural damage: ~20 kPa overpressure
-  // Severe destruction: ~100 kPa overpressure
+  /**
+   * Calculate range for a given overpressure threshold
+   * Using the Collins et al. (2017) formula inverted and yield-scaled
+   * 
+   * @param {number} p_target - Target overpressure in Pa
+   * @returns {number} Range in km where this overpressure occurs
+   */
+  function rangeForOverpressure(p_target) {
+    if (p_target <= 0) return 0;
+    
+    // Yield scaling factor
+    const yield_scale = Math.pow(E_kt, 1/3);
+    
+    // Altitude correction factor
+    const alt_factor = Math.pow(1 + altitude / 6789, 2);
+    
+    // Scaled overpressure (for 1 kt equivalent)
+    const p_1kt = p_target / Math.pow(E_kt, 2/3);
+    
+    // Solve for range using the Collins et al. (2017) formula
+    // p = 3.14e11 / ((2.5e5 + r^2.5) * alt_factor)
+    // Rearranging: r^2.5 = (3.14e11 / (p * alt_factor)) - 2.5e5
+    
+    const denominator = p_1kt * alt_factor;
+    if (denominator <= 0) return 0;
+    
+    const r_term = (3.14e11 / denominator) - 2.5e5;
+    if (r_term <= 0) return 0.01; // Minimum 10 m radius
+    
+    const r_1kt = Math.pow(r_term, 1/2.5); // Range in meters for 1 kt
+    const r_scaled = r_1kt * yield_scale; // Scale by yield^(1/3)
+    
+    return r_scaled / 1000; // Convert to km
+  }
   
-  const R_base = Math.pow(effectiveEnergy, 1/3); // km
+  /**
+   * Overpressure thresholds based on Glasstone & Dolan (1977) and other sources:
+   * 
+   * - 0.5-1 kPa (500-1000 Pa): Window glass breakage (loud indoor noise)
+   * - 3-5 kPa (3000-5000 Pa): Moderate damage to houses, some collapsed walls
+   * - 10-20 kPa (10000-20000 Pa): Serious damage to buildings, heavy structural damage
+   * - 35-50 kPa (35000-50000 Pa): Complete destruction of brick buildings
+   * - 70-100 kPa (70000-100000 Pa): Total destruction, reinforced concrete heavily damaged
+   * 
+   * We use conservative (lower) values for public safety estimates
+   */
   
-  const radiusWindowBreak = R_base * 5.0; // ~3 kPa
-  const radiusStructuralDamage = R_base * 2.0; // ~20 kPa
-  const radiusSevereDestruction = R_base * 0.8; // ~100 kPa
+  // Window breakage: 1 kPa (1000 Pa)
+  const radiusWindowBreak = rangeForOverpressure(1000);
   
-  // Severity classification
+  // Structural damage: 20 kPa (20000 Pa) - serious building damage
+  const radiusStructuralDamage = rangeForOverpressure(20000);
+  
+  // Severe destruction: 35 kPa (35000 Pa) - complete destruction of most buildings
+  const radiusSevereDestruction = rangeForOverpressure(35000);
+  
+  // Severity classification based on destruction radii
   let severity = 'minor';
-  if (radiusSevereDestruction > 1) severity = 'catastrophic';
-  else if (radiusStructuralDamage > 2) severity = 'major';
-  else if (radiusWindowBreak > 5) severity = 'moderate';
+  if (radiusSevereDestruction > 10) severity = 'catastrophic';
+  else if (radiusSevereDestruction > 3) severity = 'major';
+  else if (radiusStructuralDamage > 10) severity = 'significant';
+  else if (radiusWindowBreak > 20) severity = 'moderate';
   
   return {
     energy: energy,
@@ -529,19 +546,15 @@ function assessNEOImpact(params) {
 
 export {
   // Constants
-  MATERIAL_PRESETS,
   V_ESCAPE_EARTH,
   GRAVITY,
-  
   // Core functions
   calculateEntryConditions,
   calculateBodyProperties,
   integrateTrajectory,
   estimateBlastEffects,
-  
   // High-level API
   assessNEOImpact,
-  
   // Utilities
   atmosphericDensity,
   dynamicPressure,
