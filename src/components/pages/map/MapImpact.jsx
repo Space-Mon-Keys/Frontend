@@ -67,9 +67,25 @@ const MapImpact = ({
   diameter = 50,
   velocity = 20000,
   density = 3000,
-  entryAngle = 45
+  entryAngle = 45,
+  initialLat = null,
+  initialLng = null
 }) => {
   const [impactPos, setImpactPos] = useState(null);
+
+  // Inicializar impactPos con initialLat/initialLng si están definidos y impactPos es null
+  useEffect(() => {
+    if (
+      impactPos === null &&
+      initialLat !== null &&
+      initialLng !== null &&
+      !isNaN(initialLat) &&
+      !isNaN(initialLng)
+    ) {
+      setImpactPos([initialLat, initialLng]);
+    }
+    // Solo se ejecuta cuando cambian los iniciales o impactPos
+  }, [initialLat, initialLng, impactPos]);
 
   // Convertir parámetros de HOME a formato NEO
   const neoParams = useMemo(() => {
@@ -284,8 +300,10 @@ const MapImpact = ({
           attribution="&copy; OpenStreetMap contributors & CartoDB"
         />
         <LocationMarker onSelect={setImpactPos} position={impactPos} />
-        {/* Ajusta el zoom al círculo más grande solo si hay daños */}
-        {impactPos && showDamageZones && <FitCircleBounds center={impactPos} radiusMeters={maxRadiusMeters} />}
+        {/* Ajusta el zoom al círculo más grande solo si hay daños y el radio es mayor a cero */}
+        {impactPos && showDamageZones && maxRadiusMeters > 0 && (
+          <FitCircleBounds center={impactPos} radiusMeters={maxRadiusMeters} />
+        )}
         {/* Renderizar círculos de mayor a menor radio para que los pequeños queden encima */}
         {impactPos && showDamageZones && damageZones
           .map((zone) => ({ ...zone }))
