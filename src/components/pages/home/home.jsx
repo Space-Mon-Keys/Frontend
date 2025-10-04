@@ -121,8 +121,8 @@ export default function Home() {
       {/* Panel flotante de parámetros SIEMPRE visible */}
       <div style={{
         position: 'absolute',
-        top: 20,
-        left: 20,
+        top: 30,
+        left: 50,
         zIndex: 2000, // más alto que el iris
         background: 'rgba(20, 20, 40, 0.95)',
         borderRadius: 12,
