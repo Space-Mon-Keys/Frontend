@@ -34,7 +34,7 @@ const MATERIALS = {
 - Polvo y minerales: 10%
 
 Características:
-- Densidad: 500–1000 kg/m³
+- Densidad: 500–1500 kg/m³
 - Poroso y frágil, se desintegra con facilidad
 - Origen: Nube de Oort / Cinturón de Kuiper
 - Visual al entrar: brillo azul verdoso, fragmentación temprana, estelas cortas
@@ -69,7 +69,7 @@ Características:
 - Otros metales: 5%
 
 Características:
-- Densidad: 7000–8000 kg/m³
+- Densidad: 3500–6000 kg/m³
 - Muy resistente, sobrevive mayormente intacto
 - Origen: núcleos de planetesimales destruidos
 - Visual al entrar: blanco-azulado intenso, incandescencia roja en fragmentación
