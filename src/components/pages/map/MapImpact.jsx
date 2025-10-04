@@ -4,6 +4,50 @@ import { assessNEOImpact } from '../../../services/neoEntryImpact';
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 
+// Formatear energía con unidades apropiadas según magnitud
+function formatEnergy(energyMt) {
+  if (energyMt >= 0.001) {
+    // >= 1 kilotón: mostrar en megatones
+    return `${energyMt.toFixed(3)} Mt TNT`;
+  } else if (energyMt >= 0.000001) {
+    // >= 1 tonelada: mostrar en kilotones
+    const energyKt = energyMt * 1000;
+    return `${energyKt.toFixed(3)} kt TNT`;
+  } else {
+    // < 1 kilotón: mostrar en toneladas
+    const energyTon = energyMt * 1000000;
+    return `${energyTon.toFixed(2)} ton TNT`;
+  }
+}
+
+// Formatear distancia con unidades apropiadas según magnitud
+function formatDistance(distanceKm) {
+  if (distanceKm >= 1) {
+    // >= 1 km: mostrar en kilómetros
+    return `${distanceKm.toFixed(2)} km`;
+  } else if (distanceKm >= 0.001) {
+    // >= 1 metro: mostrar en metros
+    const distanceM = distanceKm * 1000;
+    return `${distanceM.toFixed(1)} m`;
+  } else {
+    // < 1 metro: mostrar en centímetros
+    const distanceCm = distanceKm * 100000;
+    return `${distanceCm.toFixed(0)} cm`;
+  }
+}
+
+// Formatear velocidad con unidades apropiadas
+function formatVelocity(velocityMs) {
+  const velocityKms = velocityMs / 1000;
+  if (velocityKms >= 1) {
+    // >= 1 km/s: mostrar en km/s
+    return `${velocityKms.toFixed(2)} km/s`;
+  } else {
+    // < 1 km/s: mostrar en m/s
+    return `${velocityMs.toFixed(1)} m/s`;
+  }
+}
+
 // Fórmula para radio del cráter base (en km) según energía (megatones)
 function calculateCraterRadiusKm(energyMt) {
   // Relación empírica: radio (km) ≈ 1.8 * (E)^(1/3)
@@ -90,10 +134,18 @@ const MapImpact = ({
   // Convertir parámetros de HOME a formato NEO
   const neoParams = useMemo(() => {
     // velocity (m/s) → vInfinity (km/s)
-    // Aproximación: v_infinity ≈ sqrt(v_impact^2 - v_escape^2)
-    const vEscape = 11.2; // km/s
     const vImpact = velocity / 1000; // convertir a km/s
-    const vInf = Math.max(5, Math.sqrt(Math.max(0, vImpact * vImpact - vEscape * vEscape)));
+    
+    let vInf;
+    if (vImpact < 3) {
+      // Velocidad baja: usar directamente (satélites, reentradas lentas)
+      vInf = vImpact;
+    } else {
+      // Velocidad alta: calcular v_infinity para NEO
+      // Aproximación: v_infinity ≈ sqrt(v_impact^2 - v_escape^2)
+      const vEscape = 11.2; // km/s
+      vInf = Math.max(5, Math.sqrt(Math.max(0, vImpact * vImpact - vEscape * vEscape)));
+    }
     
     // Construir objeto material según densidad
     let materialObj;
@@ -155,21 +207,34 @@ const MapImpact = ({
     : (airburstData?.energy || impactScenario.trajectory.impact.airburstEnergy || 0.001);
   
   const craterRadiusKm = hasGroundImpact ? calculateCraterRadiusKm(finalEnergyMt) : 0;
-  // Solo calcular magnitud de terremoto si hay impacto terrestre
-  const earthquakeMag = hasGroundImpact ? energyToMagnitude(finalEnergyMt * 4.184e15) : null;
+  
+  // Calcular magnitud sísmica si hay impacto terrestre
+  // Solo una fracción de la energía de impacto se convierte en energía sísmica radiada.
+  // Factor de acoplamiento sísmico η (adimensional):
+  //   - Roca/continente: 1e-3 (por defecto)
+  //   - Sedimentos blandos: 3e-4
+  //   - Océano/profundidad: 1e-4
+  // Conversión: 1 Mt TNT = 4.184e15 J
+  // E_sismo = E_impacto × η
+  const SEISMIC_COUPLING = 1e-3; // η para roca/continente (por defecto)
+  const impactEnergyJoules = finalEnergyMt * 4.184e15; // Convertir Mt TNT a julios
+  const earthquakeMag = hasGroundImpact ? energyToMagnitude(impactEnergyJoules, SEISMIC_COUPLING) : null;
+  
+  // No mostrar bloque sísmico si Mw < 2.0 (imperceptible)
+  const showSeismicBlock = earthquakeMag !== null && earthquakeMag >= 2.0;
 
-  // Estado para terremotos reales equivalentes (solo si hay impacto terrestre)
+  // Estado para terremotos reales equivalentes (solo si hay impacto terrestre y Mw >= 2.0)
   const [similarQuakes, setSimilarQuakes] = useState([]);
   useEffect(() => {
     let cancelled = false;
     async function fetchQuakes() {
-      if (!hasGroundImpact || !earthquakeMag || isNaN(earthquakeMag)) return setSimilarQuakes([]);
+      if (!showSeismicBlock || isNaN(earthquakeMag)) return setSimilarQuakes([]);
       const quakes = await findSimilarEarthquakes(earthquakeMag, 0.15, 3);
       if (!cancelled) setSimilarQuakes(quakes);
     }
     fetchQuakes();
     return () => { cancelled = true; };
-  }, [earthquakeMag, hasGroundImpact]);
+  }, [earthquakeMag, showSeismicBlock]);
 
   // Determinar si hay airburst (sin impacto terrestre)
   const hasAirburst = !hasGroundImpact && airburstData && airburstData.altitude;
@@ -209,32 +274,8 @@ const MapImpact = ({
         idx: 1
       },
       {
-        // Usar radiusWindowBreak2 si existe (2 kPa), si no, estimar a partir de radiusWindowBreak (1 kPa)
-        radiusKm: (() => {
-          if (typeof airburstData.radiusWindowBreak2 === 'number') {
-            return airburstData.radiusWindowBreak2;
-          } else if (typeof airburstData.radiusWindowBreak === 'number') {
-            // Estimar radio para 2 kPa usando ley de atenuación: r2 = r1 * (P1/P2)^(1/3.4)
-            const r1 = airburstData.radiusWindowBreak;
-            const P1 = 1, P2 = 2;
-            const r2 = r1 * Math.pow(P1 / P2, 1 / 3.4);
-            return r2;
-          } else {
-            return 0;
-          }
-        })(),
-        radiusMeters: (() => {
-          if (typeof airburstData.radiusWindowBreak2 === 'number') {
-            return airburstData.radiusWindowBreak2 * 1000;
-          } else if (typeof airburstData.radiusWindowBreak === 'number') {
-            const r1 = airburstData.radiusWindowBreak;
-            const P1 = 1, P2 = 2;
-            const r2 = r1 * Math.pow(P1 / P2, 1 / 3.4);
-            return r2 * 1000;
-          } else {
-            return 0;
-          }
-        })(),
+        radiusKm: airburstData.radiusWindowBreak,
+        radiusMeters: airburstData.radiusWindowBreak * 1000,
         color: '#fff200',
         opacity: 0.5,
         label: 'Rotura de cristales',
@@ -491,12 +532,12 @@ const MapImpact = ({
           <div style={{ fontWeight: 700, color: '#7c4dff', fontSize: 18, marginBottom: 2, letterSpacing: 0.2 }}>Impacto del Asteroide</div>
           <div style={{ fontWeight: 600, color: '#fff', fontSize: 14, borderBottom: '1px solid rgba(124,77,255,0.2)', paddingBottom: 8, width: '100%' }}>
             <span style={{ color: '#b2f7ef', fontWeight: 700 }}>Objeto:</span> ⌀{diameter}m, {(neoParams.densityOriginal || density).toLocaleString()} kg/m³
-            <span style={{ marginLeft: 16, color: '#fff200', fontWeight: 700 }}>Velocidad:</span> {(velocity / 1000).toFixed(1)} km/s
+            <span style={{ marginLeft: 16, color: '#fff200', fontWeight: 700 }}>Velocidad:</span> {formatVelocity(velocity)}
             <span style={{ marginLeft: 16, color: '#ff9800', fontWeight: 700 }}>Masa:</span> {(impactScenario.body.mass / 1000).toLocaleString(undefined, {maximumFractionDigits: 0})} ton
             <span style={{ marginLeft: 16, color: '#d500f9', fontWeight: 700 }}>Ángulo:</span> {entryAngle}°
           </div>
           <div style={{ fontWeight: 600, color: '#fff', fontSize: 15 }}>
-            <span style={{ color: '#fff200', fontWeight: 700 }}>Energía total:</span> {finalEnergyMt.toFixed(3)} Mt TNT
+            <span style={{ color: '#fff200', fontWeight: 700 }}>Energía total:</span> {formatEnergy(finalEnergyMt)}
           </div>
           <div style={{ fontWeight: 600, color: '#fff', fontSize: 14, marginTop: 2 }}>
             <span style={{ color: impactScenario.trajectory.impact.airburst ? '#00e676' : '#ff3d00', fontWeight: 700 }}>Resultado:</span>{' '}
@@ -511,7 +552,7 @@ const MapImpact = ({
               </span>
               {airburstData && airburstData.radiusWindowBreak ? (
                 <span style={{ marginLeft: 12, color: '#d500f9' }}>
-                  Radio daños: {airburstData.radiusWindowBreak.toFixed(1)} km (ventanas)
+                  Radio daños: {formatDistance(airburstData.radiusWindowBreak)} (ventanas)
                 </span>
               ) : null}
               {(!airburstData || !airburstData.altitude) && (
@@ -521,9 +562,12 @@ const MapImpact = ({
               )}
             </div>
           )}
-          {hasGroundImpact && (
+          {showSeismicBlock && (
             <div style={{ fontWeight: 600, color: '#ff3d00', fontSize: 15 }}>
-              <span>Magnitud sísmica estimada: <strong>{earthquakeMag?.toFixed(1)}</strong></span>
+              <span>Magnitud sísmica estimada: <strong>{earthquakeMag.toFixed(1)}</strong></span>
+              <span style={{ display: 'block', marginTop: 4, color: '#b2f7ef', fontSize: 12, fontStyle: 'italic' }}>
+                (Asumiendo acoplamiento sísmico η = {SEISMIC_COUPLING.toExponential(0)} para roca/continente)
+              </span>
               {similarQuakes.length > 0 && (
                 <span style={{ display: 'block', marginTop: 6, color: '#b2f7ef', fontSize: 13 }}>
                   Terremotos similares: {similarQuakes.map(q => `${q.place || 'Terremoto'} (M${q.magnitude}, ${new Date(q.time).getFullYear()})`).join(' | ')}
@@ -550,7 +594,7 @@ const MapImpact = ({
                     }} />
                     <span>
                       <strong style={{ color: zone.color }}>{zone.label}:</strong> {zone.description}
-                      {zone.radiusKm && <span style={{ color: '#b2f7ef', marginLeft: 8 }}>(~{zone.radiusKm.toFixed(1)} km)</span>}
+                      {zone.radiusKm && <span style={{ color: '#b2f7ef', marginLeft: 8 }}>(~{formatDistance(zone.radiusKm)})</span>}
                     </span>
                   </li>
                 ))}
@@ -697,18 +741,7 @@ const MapImpact = ({
             </li>
             <li style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
               <span style={{ fontSize: 18, color: '#fff200', marginTop: 2 }}>🪟</span>
-              <span><strong>Rotura de cristales (2 kPa):</strong> hasta <strong>{(() => {
-                if (typeof airburstData.radiusWindowBreak === 'number') {
-                  return airburstData.radiusWindowBreak.toFixed(1);
-                } else if (typeof airburstData.radiusWindowBreak === 'number') {
-                  const r1 = airburstData.radiusWindowBreak;
-                  const P1 = 1, P2 = 2;
-                  const r2 = r1 * Math.pow(P1 / P2, 1 / 3.4);
-                  return r2.toFixed(1);
-                } else {
-                  return '-';
-                }
-              })()} km</strong> del epicentro.</span>
+              <span><strong>Rotura de cristales (2 kPa):</strong> hasta <strong>{airburstData.radiusWindowBreak?.toFixed(1) ?? '-'} km</strong> del epicentro.</span>
             </li>
           </ul>
         ) : (
@@ -741,10 +774,12 @@ const MapImpact = ({
               <span style={{ fontSize: 18, color: '#00bcd4', marginTop: 2 }}>🦖</span>
               <span><strong>Extinciones masivas:</strong> La vida animal y vegetal puede verse gravemente afectada, como ocurrió con los dinosaurios.</span>
             </li>
-            <li style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-              <span style={{ fontSize: 18, color: '#7c4dff', marginTop: 2 }}>🌎</span>
-              <span><strong>Terremoto generado:</strong> Magnitud estimada <strong>{earthquakeMag?.toFixed(1)}</strong> en la escala Richter (por la energía liberada).</span>
-            </li>
+            {showSeismicBlock && (
+              <li style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                <span style={{ fontSize: 18, color: '#7c4dff', marginTop: 2 }}>🌎</span>
+                <span><strong>Terremoto generado:</strong> Magnitud estimada <strong>{earthquakeMag.toFixed(1)}</strong> (Mw, asumiendo acoplamiento sísmico η = {SEISMIC_COUPLING.toExponential(0)}).</span>
+              </li>
+            )}
           </ul>
         )}
       </div>

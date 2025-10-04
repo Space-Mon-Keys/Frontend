@@ -33,8 +33,8 @@ const Q_ABLATION = 8e6;
 /** Top of atmosphere altitude for entry calculations (m) */
 const H_ENTRY = 100000;
 
-/** Minimum velocity threshold to stop integration (m/s) */
-const MIN_VELOCITY = 300;
+/** Minimum velocity threshold for terminal velocity mode (m/s) */
+const MIN_VELOCITY = 500;
 
 
 // ============================================================================
@@ -97,8 +97,16 @@ function dynamicPressure(rho, velocity) {
  * @returns {EntryConditions} Entry conditions
  */
 function calculateEntryConditions(vInfinity, entryAngleDeg = 45) {
-  // v_entry = sqrt(v_inf^2 + v_escape^2)
-  const vEntry = Math.sqrt(vInfinity * vInfinity + V_ESCAPE_EARTH * V_ESCAPE_EARTH);
+  // For low velocities (< 3 km/s), treat as direct entry velocity (e.g., satellite reentry)
+  // For high velocities (>= 3 km/s), use NEO physics: v_entry = sqrt(v_inf^2 + v_escape^2)
+  let vEntry;
+  if (vInfinity < 3) {
+    // Low velocity: use directly as entry velocity (satellite reentry, controlled descent)
+    vEntry = vInfinity;
+  } else {
+    // High velocity: NEO/asteroid entry physics
+    vEntry = Math.sqrt(vInfinity * vInfinity + V_ESCAPE_EARTH * V_ESCAPE_EARTH);
+  }
   
   return {
     velocity: vEntry * 1000, // Convert to m/s
@@ -215,6 +223,9 @@ function integrateTrajectory(entryConditions, bodyProperties, options = {}) {
   let airburstAltitude = null;
   let airburstEnergy = null;
   
+  // Track initial velocity to prevent airburst for low-velocity entries
+  const initialVelocity = v;
+  
   // Trajectory recording
   const trajectory = [];
   let stepCount = 0;
@@ -237,20 +248,28 @@ function integrateTrajectory(entryConditions, bodyProperties, options = {}) {
   }
   
   // Integration loop
-  while (h > 0 && v > MIN_VELOCITY) {
+  // Continue while above ground
+  // Objects can reach terminal velocity and still fall to the ground
+  while (h > 0) {
     // Current atmospheric density
     const rho = atmosphericDensity(h);
     
     // Dynamic pressure
     const q = dynamicPressure(rho, v);
     
-    // Check for fragmentation/breakup
-    if (!fragmented && q >= bodyProperties.strength) {
+    // Check for fragmentation/breakup (only if velocity > 1 km/s)
+    // Below 1 km/s, no significant airburst/explosion effects
+    // Also check that initial entry velocity was high enough (> 1 km/s)
+    if (!fragmented && v > 1000 && initialVelocity > 1000 && q >= bodyProperties.strength) {
       fragmented = true;
       airburstAltitude = h;
       // Energy at breakup (kinetic energy in megatons TNT)
       // 1 megaton TNT = 4.184e15 J
-      airburstEnergy = (0.5 * m * v * v) / 4.184e15;
+      const energyAtBreakup = (0.5 * m * v * v) / 4.184e15;
+      // Only record airburst if energy is significant (> 0.00001 Mt = 10 tons TNT)
+      if (energyAtBreakup > 0.00001) {
+        airburstEnergy = energyAtBreakup;
+      }
       
       // Increase effective area/mass ratio (fragmentation)
       A = A * fragMult;
@@ -262,19 +281,43 @@ function integrateTrajectory(entryConditions, bodyProperties, options = {}) {
     const totalAccel = dragAccel + gravAccel;
     
     // Ablation (mass loss rate)
-    const dmdt = -(lambda * A / (2 * Q)) * rho * v * v * v;
+    // Only apply ablation if velocity > 3 km/s (high-speed reentry)
+    // Below 3 km/s (e.g., satellite reentry), ablation is negligible
+    let dmdt = 0;
+    if (v > 3000) {
+      dmdt = -(lambda * A / (2 * Q)) * rho * v * v * v;
+      m = Math.max(0, m + dmdt * dt);
+    }
+    // If no ablation, mass stays constant (don't update)
     
     // Update state (simple Euler integration)
-    v = v + totalAccel * dt;
+    const v_new = v + totalAccel * dt;
+    
+    // If velocity becomes very low, the object has reached terminal velocity
+    // At terminal velocity, drag force equals gravitational force, so velocity is constant
+    // Terminal velocity at current altitude: v_t = sqrt((2 * m * g) / (rho * Cd * A))
+    if (v_new < MIN_VELOCITY && rho > 0 && m > 0) {
+      const v_terminal = Math.sqrt((2 * m * GRAVITY) / (rho * Cd * A));
+      // Cap at realistic terminal velocity for meteorites (~200-300 m/s)
+      v = Math.min(v_terminal, 200);
+      // Once at terminal velocity, continue descending at this constant speed
+      // No further deceleration - object will fall until it hits ground
+    } else {
+      v = Math.max(0, v_new);
+    }
+    
     h = h - v * Math.sin(gamma) * dt;
-    m = Math.max(0, m + dmdt * dt);
     t = t + dt;
     
     // Prevent negative values
-    if (v < 0) v = 0;
-    if (m <= 0) {
+    // Only break if mass is 0 AND ablation was active (high velocity)
+    if (m <= 0 && initialVelocity > 3000) {
       m = 0;
       break; // Completely ablated
+    }
+    // If mass somehow becomes negative at low velocity, reset to initial mass
+    if (m <= 0 && initialVelocity <= 3000) {
+      m = bodyProperties.mass;
     }
     
     // Record trajectory at intervals
@@ -294,7 +337,8 @@ function integrateTrajectory(entryConditions, bodyProperties, options = {}) {
     stepCount++;
     
     // Safety check (prevent infinite loops)
-    if (t > 300) break; // Max 5 minutes of flight time
+    // Allow longer flight time for objects falling at terminal velocity
+    if (t > 1800) break; // Max 30 minutes of flight time
   }
   
   // Final state
@@ -325,7 +369,7 @@ function integrateTrajectory(entryConditions, bodyProperties, options = {}) {
       velocity: v,
       mass: m,
       massFraction: m / bodyProperties.mass,
-      airburst: fragmented && h > 0,
+      airburst: fragmented && h > 0 && airburstEnergy !== null && airburstEnergy > 0,
       airburstAltitude: airburstAltitude,
       airburstEnergy: airburstEnergy,
       groundImpact: h <= 0,
@@ -428,6 +472,7 @@ function estimateBlastEffects(energy, altitude) {
    * Overpressure thresholds based on Glasstone & Dolan (1977) and other sources:
    * 
    * - 0.5-1 kPa (500-1000 Pa): Window glass breakage (loud indoor noise)
+   * - 2 kPa (2000 Pa): Typical window breakage threshold (conservative)
    * - 3-5 kPa (3000-5000 Pa): Moderate damage to houses, some collapsed walls
    * - 10-20 kPa (10000-20000 Pa): Serious damage to buildings, heavy structural damage
    * - 35-50 kPa (35000-50000 Pa): Complete destruction of brick buildings
@@ -436,8 +481,8 @@ function estimateBlastEffects(energy, altitude) {
    * We use conservative (lower) values for public safety estimates
    */
   
-  // Window breakage: 1 kPa (1000 Pa)
-  let radiusWindowBreak = rangeForOverpressure(1000);
+  // Window breakage: 2 kPa (2000 Pa) - typical threshold for glass breakage
+  let radiusWindowBreak = rangeForOverpressure(2000);
   // Structural damage: 20 kPa (20000 Pa) - serious building damage
   let radiusStructuralDamage = rangeForOverpressure(20000);
   // Severe destruction: 35 kPa (35000 Pa) - complete destruction of most buildings
@@ -451,7 +496,7 @@ function estimateBlastEffects(energy, altitude) {
   const H_REF = 25; // km, reference height
   const H_SCALE = 8; // km, attenuation scale
   const EXP_P = 0.6; // exponent
-  const CAP_1KPA = 300; // km, max for 1 kPa
+  const CAP_2KPA = 300; // km, max for 2 kPa
   const h_burst_km = altitude / 1000;
   let attenuation = 1.0;
   if (h_burst_km > H_REF) {
@@ -461,8 +506,8 @@ function estimateBlastEffects(energy, altitude) {
     radiusSevereDestruction *= attenuation;
     radiusExtreme *= attenuation;
   }
-  // Cap 1 kPa radius after attenuation
-  if (radiusWindowBreak > CAP_1KPA) radiusWindowBreak = CAP_1KPA;
+  // Cap 2 kPa radius after attenuation
+  if (radiusWindowBreak > CAP_2KPA) radiusWindowBreak = CAP_2KPA;
 
   // Severity classification based on destruction radii
   let severity = 'minor';
@@ -474,9 +519,9 @@ function estimateBlastEffects(energy, altitude) {
   /*
     Ajuste empírico para meteoritos con bursts altos:
     - Para bursts > 25 km, se aplica atenuación atmosférica adicional a todos los radios de daño.
-    - El radio de 1 kPa (rotura de ventanas) se limita a 300 km tras la atenuación.
+    - El radio de 2 kPa (rotura de ventanas) se limita a 300 km tras la atenuación.
     - Basado en disipación atmosférica mayor que en explosiones nucleares.
-    - Parámetros: H_REF=25 km, H_SCALE=8 km, EXP_P=0.6, CAP_1KPA=300 km.
+    - Parámetros: H_REF=25 km, H_SCALE=8 km, EXP_P=0.6, CAP_2KPA=300 km.
   */
 
   return {
