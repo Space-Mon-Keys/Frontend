@@ -88,6 +88,7 @@ export default function Home() {
   const [diameter, setDiameter] = useLocalState(100); // meters
   const [velocity, setVelocity] = useLocalState(20000); // m/s
   const [density, setDensity] = useLocalState(3000); // kg/m^3
+  const [entryAngle, setEntryAngle] = useLocalState(45); // degrees from horizontal
 
   // NASA asteroid data
   const [asteroids, setAsteroids] = useLocalState([]);
@@ -288,6 +289,27 @@ export default function Home() {
               {Math.round(density)} kg/m³
             </div>
           </div>
+          
+          {/* Ángulo de entrada */}
+          <div style={{ marginTop: 12 }}>
+            <label style={{ fontSize: 13, display: "block", marginBottom: 4 }}>
+              Ángulo de entrada: <strong style={{ color: '#7c4dff' }}>{entryAngle}°</strong>
+            </label>
+            <input
+              type="range"
+              min="10"
+              max="90"
+              step="5"
+              value={entryAngle}
+              onChange={e => setEntryAngle(Number(e.target.value))}
+              style={{ width: "100%" }}
+            />
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, opacity: 0.7, marginTop: 2 }}>
+              <span>Rasante (10°)</span>
+              <span>Vertical (90°)</span>
+            </div>
+          </div>
+          
           <div style={{ marginTop: 8, padding: '8px', background: 'rgba(124, 77, 255, 0.2)', borderRadius: 6 }}>
             <strong style={{ fontSize: 13 }}>Impact energy:</strong>
             <div style={{ fontSize: 16, color: '#7c4dff', fontWeight: 'bold' }}>{energyMt.toLocaleString(undefined, { maximumFractionDigits: 2 })} Mt TNT</div>
@@ -379,8 +401,11 @@ export default function Home() {
           )}
           {view === '2d' && impacted && (
             <MapImpact
+              diameter={diameter}
+              velocity={velocity}
+              density={density}
+              entryAngle={entryAngle}
               energyMt={energyMt}
-              // El centro y el marcador se pasan como props
               initialLat={impactLat}
               initialLng={impactLng != null ? -impactLng : null}
             />
