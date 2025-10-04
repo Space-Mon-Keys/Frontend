@@ -13,9 +13,12 @@ function calculateAirBlastPressureKPa(energyMt, distanceKm) {
   const R = Math.max(distanceKm, 0.01); // evitar división por cero
   return 0.28 * Math.pow(Ekt / (R*R*R), 0.72);
 }
+
 import React, { useState, useEffect } from "react";
 import { energyToMagnitude, findSimilarEarthquakes } from '../../../earthquakeEnergyService';
-import { MapContainer, TileLayer, Marker, Circle, useMapEvents, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Circle, LayersControl, useMapEvents, useMap } from "react-leaflet";
+import "leaflet/dist/leaflet.css";
+
 // Componente auxiliar para ajustar el zoom al círculo más grande
 function FitCircleBounds({ center, radiusMeters }) {
   const map = useMap();
@@ -35,7 +38,6 @@ function FitCircleBounds({ center, radiusMeters }) {
   }, [center, radiusMeters, map]);
   return null;
 }
-import "leaflet/dist/leaflet.css";
 
 // Parámetros de zonas de impacto (radio relativo, color, opacidad, label, descripción)
 const impactZones = [
@@ -67,7 +69,6 @@ const DEFAULT_CENTER = [20, 0];
 const DEFAULT_ZOOM = 2;
 const DEFAULT_ENERGY_MT = 10; // 10 megatones (ejemplo)
 
-
 const MapImpact = ({ energyMt = DEFAULT_ENERGY_MT, initialLat, initialLng }) => {
   const [impactPos, setImpactPos] = useState(
     initialLat != null && initialLng != null ? [initialLat, initialLng] : null
@@ -97,6 +98,63 @@ const MapImpact = ({ energyMt = DEFAULT_ENERGY_MT, initialLat, initialLng }) => 
   const maxZone = impactZones[impactZones.length - 1];
   const maxRadiusMeters = craterRadiusKm * maxZone.relRadius * 1000;
 
+  // Estado para mostrar/ocultar todas las zonas
+  const [showAllZones, setShowAllZones] = useState(true);
+  // Estado para overlays individuales (siempre en el mismo orden)
+  const [zoneVisibility, setZoneVisibility] = useState(
+    impactZones.map(() => true)
+  );
+
+  // Cuando se activa "Todas las zonas", todos los overlays individuales se activan
+  useEffect(() => {
+    if (showAllZones) {
+      setZoneVisibility(impactZones.map(() => true));
+    }
+  }, [showAllZones]);
+
+  // Si se desactiva "Todas las zonas", oculta todos los círculos
+  const visibleZones = showAllZones ? zoneVisibility : impactZones.map(() => false);
+
+  // Estados para la leyenda arrastrable
+  const [legendPos, setLegendPos] = useState({ x: null, y: null });
+  const [dragging, setDragging] = useState(false);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const legendRef = React.useRef(null);
+  
+  // Estado para minimizar/expandir el control de capas
+  const [layersExpanded, setLayersExpanded] = useState(true);
+
+  // Efecto para listeners globales de mouse (leyenda arrastrable)
+  useEffect(() => {
+    function onMouseMove(e) {
+      if (!dragging) return;
+      setLegendPos(pos => ({
+        x: e.clientX - offset.x,
+        y: e.clientY - offset.y
+      }));
+    }
+    function onMouseUp() { setDragging(false); }
+    if (dragging) {
+      window.addEventListener('mousemove', onMouseMove);
+      window.addEventListener('mouseup', onMouseUp);
+    }
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+  }, [dragging, offset]);
+
+  // Posición inicial de la leyenda (top right)
+  useEffect(() => {
+    if (legendPos.x === null && legendPos.y === null && legendRef.current) {
+      const rect = legendRef.current.getBoundingClientRect();
+      setLegendPos({
+        x: window.innerWidth - rect.width - 20,
+        y: 20
+      });
+    }
+  }, [legendPos.x, legendPos.y]);
+
   return (
     <div style={{
       width: '100vw',
@@ -109,7 +167,7 @@ const MapImpact = ({ energyMt = DEFAULT_ENERGY_MT, initialLat, initialLng }) => 
       background: '#181c2a',
       zIndex: 0
     }}>
-  <MapContainer center={impactPos || DEFAULT_CENTER} zoom={DEFAULT_ZOOM} maxZoom={19} style={{ height: "100%", width: "100%", borderRadius: 0, zIndex: 1 }}>
+      <MapContainer center={impactPos || DEFAULT_CENTER} zoom={DEFAULT_ZOOM} maxZoom={19} style={{ height: "100%", width: "100%", borderRadius: 0, zIndex: 1 }}>
         <TileLayer
           url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
           attribution="&copy; OpenStreetMap contributors & CartoDB"
@@ -117,16 +175,144 @@ const MapImpact = ({ energyMt = DEFAULT_ENERGY_MT, initialLat, initialLng }) => 
         <LocationMarker onSelect={setImpactPos} position={impactPos} />
         {/* Ajusta el zoom al círculo más grande */}
         {impactPos && <FitCircleBounds center={impactPos} radiusMeters={maxRadiusMeters} />}
-        {/* Dibuja los círculos de mayor a menor para que los pequeños queden encima */}
-        {impactPos && [...impactZones].reverse().map((zone, idx) => (
-          <Circle
-            key={zone.color+idx}
-            center={impactPos}
-            radius={craterRadiusKm * zone.relRadius * 1000} // km a metros
-            pathOptions={{ color: zone.color, fillColor: zone.color, fillOpacity: zone.opacity, weight: 2 }}
-          />
-        ))}
+        {/* Renderizar círculos de mayor a menor radio para que los pequeños queden encima */}
+        {impactPos && impactZones
+          .map((zone, idx) => ({ zone, idx, r: craterRadiusKm * zone.relRadius * 1000 }))
+          .filter(({ idx }) => visibleZones[idx])
+          .sort((a, b) => b.r - a.r) // mayor a menor radio (grandes primero, atrás)
+          .map(({ zone, idx, r }) => (
+            <Circle
+              key={`circle-${idx}`}
+              center={impactPos}
+              radius={r}
+              pathOptions={{ 
+                color: zone.color, 
+                fillColor: zone.color, 
+                fillOpacity: zone.opacity, 
+                weight: 2 
+              }}
+            />
+          ))
+        }
       </MapContainer>
+      {/* Panel de control de capas personalizado */}
+      {impactPos && (
+        <div style={{
+          position: 'fixed',
+          top: 20,
+          right: 20,
+          zIndex: 2000,
+          background: 'rgba(20,20,40,0.95)',
+          borderRadius: 8,
+          border: '2px solid #7c4dff',
+          boxShadow: '0 4px 16px rgba(124,77,255,0.3)',
+          padding: '12px',
+          minWidth: layersExpanded ? 200 : 'auto',
+          maxWidth: 250,
+          color: '#e0e7ff',
+          fontSize: 14,
+          transition: 'all 0.3s ease'
+        }}>
+          <div style={{ 
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            fontWeight: 700, 
+            color: '#7c4dff', 
+            fontSize: 15, 
+            marginBottom: layersExpanded ? 12 : 0,
+            borderBottom: layersExpanded ? '1px solid rgba(124,77,255,0.3)' : 'none',
+            paddingBottom: layersExpanded ? 8 : 0,
+            transition: 'all 0.3s ease'
+          }}>
+            <span>Control de Capas</span>
+            <button
+              onClick={() => setLayersExpanded(!layersExpanded)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#7c4dff',
+                cursor: 'pointer',
+                fontSize: 18,
+                padding: '0 4px',
+                display: 'flex',
+                alignItems: 'center',
+                transition: 'transform 0.3s ease'
+              }}
+              title={layersExpanded ? 'Minimizar' : 'Expandir'}
+            >
+              {layersExpanded ? '▼' : '▶'}
+            </button>
+          </div>
+          {layersExpanded && (
+            <>
+              {/* Control maestro "Todas las zonas" */}
+              <label style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: 8, 
+                cursor: 'pointer',
+                marginBottom: 12,
+                padding: '6px 4px',
+                background: showAllZones ? 'rgba(124,77,255,0.2)' : 'transparent',
+                borderRadius: 4,
+                fontWeight: 600
+              }}>
+                <input 
+                  type="checkbox" 
+                  checked={showAllZones}
+                  onChange={(e) => setShowAllZones(e.target.checked)}
+                  style={{ cursor: 'pointer', width: 16, height: 16 }}
+                />
+                <span>Todas las zonas</span>
+              </label>
+              {/* Controles individuales */}
+              <div style={{ 
+                display: 'flex', 
+                flexDirection: 'column', 
+                gap: 8,
+                paddingLeft: 8,
+                borderLeft: '2px solid rgba(124,77,255,0.2)'
+              }}>
+                {impactZones.map((zone, idx) => (
+                  <label 
+                    key={idx}
+                    style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: 8, 
+                      cursor: showAllZones ? 'pointer' : 'not-allowed',
+                      opacity: showAllZones ? 1 : 0.4,
+                      fontSize: 13
+                    }}
+                  >
+                    <input 
+                      type="checkbox" 
+                      checked={visibleZones[idx]}
+                      disabled={!showAllZones}
+                      onChange={(e) => {
+                        const newVis = [...zoneVisibility];
+                        newVis[idx] = e.target.checked;
+                        setZoneVisibility(newVis);
+                      }}
+                      style={{ cursor: showAllZones ? 'pointer' : 'not-allowed', width: 14, height: 14 }}
+                    />
+                    <div style={{
+                      width: 12,
+                      height: 12,
+                      borderRadius: '50%',
+                      background: zone.color,
+                      border: '1px solid rgba(255,255,255,0.3)',
+                      flexShrink: 0
+                    }} />
+                    <span>{zone.label}</span>
+                  </label>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
       {/* Cuadro de datos físicos abajo a la derecha */}
       {impactPos && (
         <div style={{
@@ -178,20 +364,51 @@ const MapImpact = ({ energyMt = DEFAULT_ENERGY_MT, initialLat, initialLng }) => 
           )}
         </div>
       )}
-      {/* Leyenda de zonas de impacto */}
-      <div style={{
-        position: 'absolute',
-        top: 20,
-        right: 20,
-        zIndex: 2000,
-        maxWidth: 280,
-        margin: '16px auto',
-        padding: '12px',
-        background: 'rgba(20,20,40,0.9)',
-        borderRadius: 8,
-        border: '1px solid rgba(124,77,255,0.3)'
-      }}>
-        <h4 style={{ color: '#7c4dff', marginTop: 0, marginBottom: 12, fontSize: 14 }}>Zonas de Impacto</h4>
+      {/* Leyenda de zonas de impacto arrastrable */}
+      <div
+        ref={legendRef}
+        style={{
+          position: 'fixed',
+          left: legendPos.x ?? 'auto',
+          top: legendPos.y ?? 20,
+          right: legendPos.x == null ? 20 : 'auto',
+          zIndex: 2000,
+          maxWidth: 280,
+          margin: '16px auto',
+          padding: '12px',
+          background: 'rgba(20,20,40,0.9)',
+          borderRadius: 8,
+          border: '1px solid rgba(124,77,255,0.3)',
+          cursor: dragging ? 'grabbing' : 'default',
+          userSelect: 'none',
+          boxShadow: dragging ? '0 0 16px #7c4dff' : undefined
+        }}
+      >
+        {/* Drag handle */}
+        <div
+          style={{
+            width: '100%',
+            height: 18,
+            marginBottom: 6,
+            cursor: 'grab',
+            background: 'linear-gradient(90deg,#7c4dff33,#181c2a 80%)',
+            borderRadius: 6,
+            display: 'flex',
+            alignItems: 'center',
+            fontSize: 13,
+            color: '#7c4dff',
+            fontWeight: 700,
+            letterSpacing: 0.5,
+            paddingLeft: 8
+          }}
+          onMouseDown={e => {
+            setDragging(true);
+            const rect = legendRef.current.getBoundingClientRect();
+            setOffset({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+          }}
+        >
+          ⠿ Zonas de Impacto
+        </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {impactZones.map((zone, idx) => (
             <div key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
@@ -266,7 +483,7 @@ const MapImpact = ({ energyMt = DEFAULT_ENERGY_MT, initialLat, initialLng }) => 
           </li>
           <li style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
             <span style={{ fontSize: 18, color: '#7c4dff', marginTop: 2 }}>🌎</span>
-            <span><strong>Terremoto generado:</strong> Magnitud estimada <strong>{earthquakeMag.toFixed(1)}</strong> en la escala Richter (por la energía liberada).</span>
+            <span><strong>Terremoto generado:</strong> Magnitud estimada <strong>{earthquakeMag?.toFixed(1)}</strong> en la escala Richter (por la energía liberada).</span>
           </li>
         </ul>
       </div>
