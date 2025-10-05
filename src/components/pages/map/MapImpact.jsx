@@ -3,6 +3,23 @@ import { energyToMagnitude, findSimilarEarthquakes } from '../../../services/ear
 import { assessNEOImpact } from '../../../services/neoEntryImpact';
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
+import L from "leaflet";
+import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
+import markerIcon from 'leaflet/dist/images/marker-icon.png';
+import markerShadow from 'leaflet/dist/images/marker-shadow.png';
+
+// Fix Leaflet's default icon path so markers show up in React/Vite
+const DefaultIcon = L.icon({
+  iconUrl: markerIcon,
+  iconRetinaUrl: markerIcon2x,
+  shadowUrl: markerShadow,
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  tooltipAnchor: [16, -28],
+  shadowSize: [41, 41]
+});
+L.Marker.prototype.options.icon = DefaultIcon;
 
 // Formatear energía con unidades apropiadas según magnitud
 function formatEnergy(energyMt) {
@@ -92,7 +109,7 @@ function LocationMarker({ onSelect, position }) {
       onSelect([e.latlng.lat, e.latlng.lng]);
     },
   });
-  return position ? <Marker position={position} /> : null;
+  return position ? <Marker position={position} icon={DefaultIcon} /> : null;
 }
 
 const DEFAULT_CENTER = [20, 0];
