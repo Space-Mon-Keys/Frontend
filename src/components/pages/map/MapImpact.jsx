@@ -331,6 +331,11 @@ const MapImpact = ({
   
   // State to minimize/expand layer control
   const [layersExpanded, setLayersExpanded] = useState(true);
+  
+  // States to minimize/expand other panels
+  const [impactInfoExpanded, setImpactInfoExpanded] = useState(true);
+  const [legendExpanded, setLegendExpanded] = useState(true);
+  const [consequencesExpanded, setConsequencesExpanded] = useState(true);
 
   // Effect for global mouse listeners (draggable legend)
   useEffect(() => {
@@ -352,14 +357,25 @@ const MapImpact = ({
     };
   }, [dragging, offset]);
 
-  // Initial legend position (top right)
+  // Initial legend position (left side to avoid overlap with layer control on right)
   useEffect(() => {
     if (legendPos.x === null && legendPos.y === null && legendRef.current) {
       const rect = legendRef.current.getBoundingClientRect();
-      setLegendPos({
-        x: window.innerWidth - rect.width - 20,
-        y: 20
-      });
+      const isMobile = window.innerWidth <= 768;
+      
+      if (isMobile) {
+        // On mobile: position at bottom left
+        setLegendPos({
+          x: 20,
+          y: window.innerHeight - rect.height - 100 // Extra space for other panels
+        });
+      } else {
+        // On desktop: position at top left
+        setLegendPos({
+          x: 20,
+          y: 20
+        });
+      }
     }
   }, [legendPos.x, legendPos.y]);
 
@@ -407,9 +423,11 @@ const MapImpact = ({
       </MapContainer>
       {/* Custom layer control panel - for ground impacts or airbursts */}
       {impactPos && showDamageZones && (
-        <div style={{
+        <div 
+          className="layer-control-panel"
+          style={{
           position: 'fixed',
-          top: 20,
+          top: window.innerWidth <= 768 ? 80 : 20, // Lower on mobile to avoid drawer button
           right: 20,
           zIndex: 2000,
           background: 'rgba(20,20,40,0.95)',
@@ -418,7 +436,7 @@ const MapImpact = ({
           boxShadow: '0 4px 16px rgba(124,77,255,0.3)',
           padding: '12px',
           minWidth: layersExpanded ? 200 : 'auto',
-          maxWidth: 250,
+          maxWidth: window.innerWidth <= 768 ? '80vw' : 250,
           color: '#e0e7ff',
           fontSize: 14,
           transition: 'all 0.3s ease'
@@ -527,26 +545,61 @@ const MapImpact = ({
       {impactPos && (
         <div style={{
           position: 'fixed',
-          bottom: 'max(2vw, 18px)',
-          right: 'max(2vw, 18px)',
+          bottom: window.innerWidth <= 768 ? 'max(2vw, 10px)' : 'max(2vw, 18px)',
+          right: window.innerWidth <= 768 ? 'max(2vw, 10px)' : 'max(2vw, 18px)',
+          left: window.innerWidth <= 768 ? 'max(2vw, 10px)' : 'auto',
           zIndex: 3000,
           background: 'rgba(20,20,40,0.97)',
           borderRadius: 12,
           border: '2px solid #7c4dff',
           boxShadow: '0 4px 24px 0 rgba(44,0,80,0.18)',
           padding: '18px 18px 24px 18px',
-          minWidth: 320,
-          maxWidth: '95vw',
+          minWidth: impactInfoExpanded ? (window.innerWidth <= 768 ? 'auto' : 320) : 'auto',
+          maxWidth: window.innerWidth <= 768 ? 'none' : '95vw',
           color: '#e0e7ff',
-          fontSize: 15,
+          fontSize: window.innerWidth <= 768 ? 13 : 15,
           display: 'flex',
           flexDirection: 'column',
-          gap: 14,
+          gap: impactInfoExpanded ? 14 : 0,
           alignItems: 'flex-start',
           pointerEvents: 'auto',
-          transition: 'all 0.2s'
+          transition: 'all 0.3s ease'
         }}>
-          <div style={{ fontWeight: 700, color: '#7c4dff', fontSize: 18, marginBottom: 2, letterSpacing: 0.2 }}>Asteroid Impact</div>
+          <div style={{ 
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            width: '100%',
+            fontWeight: 700, 
+            color: '#7c4dff', 
+            fontSize: 18, 
+            marginBottom: impactInfoExpanded ? 2 : 0, 
+            letterSpacing: 0.2,
+            borderBottom: impactInfoExpanded ? '1px solid rgba(124,77,255,0.2)' : 'none',
+            paddingBottom: impactInfoExpanded ? 8 : 0,
+            transition: 'all 0.3s ease'
+          }}>
+            <span>Asteroid Impact</span>
+            <button
+              onClick={() => setImpactInfoExpanded(!impactInfoExpanded)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#7c4dff',
+                cursor: 'pointer',
+                fontSize: 18,
+                padding: '0 4px',
+                display: 'flex',
+                alignItems: 'center',
+                transition: 'transform 0.3s ease'
+              }}
+              title={impactInfoExpanded ? 'Minimize' : 'Expand'}
+            >
+              {impactInfoExpanded ? '▼' : '▶'}
+            </button>
+          </div>
+          {impactInfoExpanded && (
+            <>
           <div style={{ fontWeight: 600, color: '#fff', fontSize: 14, borderBottom: '1px solid rgba(124,77,255,0.2)', paddingBottom: 8, width: '100%' }}>
             <span style={{ color: '#b2f7ef', fontWeight: 700 }}>Object:</span> ⌀{diameter}m, {(neoParams.densityOriginal || density).toLocaleString()} kg/m³
             <span style={{ marginLeft: 16, color: '#fff200', fontWeight: 700 }}>Velocity:</span> {formatVelocity(velocity)}
@@ -624,17 +677,19 @@ const MapImpact = ({
               </ul>
             )}
           </div>
+            </>
+          )}
         </div>
       )}
       <div
         ref={legendRef}
         style={{
           position: 'fixed',
-          left: legendPos.x ?? 'auto',
+          left: legendPos.x ?? 20,
           top: legendPos.y ?? 20,
-          right: legendPos.x == null ? 20 : 'auto',
+          right: 'auto',
           zIndex: 2000,
-          maxWidth: 280,
+          maxWidth: legendExpanded ? 280 : 'auto',
           margin: '16px auto',
           padding: '12px',
           background: 'rgba(20,20,40,0.9)',
@@ -642,7 +697,8 @@ const MapImpact = ({
           border: '1px solid rgba(124,77,255,0.3)',
           cursor: dragging ? 'grabbing' : 'default',
           userSelect: 'none',
-          boxShadow: dragging ? '0 0 16px #7c4dff' : undefined
+          boxShadow: dragging ? '0 0 16px #7c4dff' : undefined,
+          transition: 'all 0.3s ease'
         }}
       >
         {/* Drag handle */}
@@ -650,17 +706,20 @@ const MapImpact = ({
           style={{
             width: '100%',
             height: 18,
-            marginBottom: 6,
+            marginBottom: legendExpanded ? 6 : 0,
             cursor: 'grab',
             background: 'linear-gradient(90deg,#7c4dff33,#181c2a 80%)',
             borderRadius: 6,
             display: 'flex',
             alignItems: 'center',
+            justifyContent: 'space-between',
             fontSize: 13,
             color: '#7c4dff',
             fontWeight: 700,
             letterSpacing: 0.5,
-            paddingLeft: 8
+            paddingLeft: 8,
+            paddingRight: 4,
+            transition: 'all 0.3s ease'
           }}
           onMouseDown={e => {
             setDragging(true);
@@ -668,8 +727,30 @@ const MapImpact = ({
             setOffset({ x: e.clientX - rect.left, y: e.clientY - rect.top });
           }}
         >
-          ⠿ {showDamageZones ? (hasGroundImpact ? 'Impact Zones' : 'Airburst Zones') : 'No Impact'}
+          <span>⠿ {showDamageZones ? (hasGroundImpact ? 'Impact Zones' : 'Airburst Zones') : 'No Impact'}</span>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setLegendExpanded(!legendExpanded);
+            }}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#7c4dff',
+              cursor: 'pointer',
+              fontSize: 16,
+              padding: '0 4px',
+              display: 'flex',
+              alignItems: 'center',
+              transition: 'transform 0.3s ease'
+            }}
+            title={legendExpanded ? 'Minimize' : 'Expand'}
+          >
+            {legendExpanded ? '▼' : '▶'}
+          </button>
         </div>
+        {legendExpanded && (
+          <>
         {showDamageZones ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {damageZones.map((zone) => (
@@ -714,6 +795,8 @@ const MapImpact = ({
             </div>
           </div>
         )}
+          </>
+        )}
       </div>
       <div style={{ marginTop: 16, color: "#e0e7ff", textAlign: "center" }}>
         <p>Click on the map to select the impact epicenter.</p>
@@ -743,9 +826,37 @@ const MapImpact = ({
         padding: '20px 28px',
         color: '#e0e7ff',
         boxShadow: '0 2px 16px 0 rgba(44,0,80,0.10)',
-        fontSize: 15
+        fontSize: 15,
+        transition: 'all 0.3s ease'
       }}>
-        <h3 style={{ color: '#ff3d00', marginTop: 0, fontSize: 18, marginBottom: 18, letterSpacing: 0.5 }}>Impact Consequences</h3>
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: consequencesExpanded ? 18 : 0,
+          transition: 'all 0.3s ease'
+        }}>
+          <h3 style={{ color: '#ff3d00', margin: 0, fontSize: 18, letterSpacing: 0.5 }}>Impact Consequences</h3>
+          <button
+            onClick={() => setConsequencesExpanded(!consequencesExpanded)}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#ff3d00',
+              cursor: 'pointer',
+              fontSize: 18,
+              padding: '0 4px',
+              display: 'flex',
+              alignItems: 'center',
+              transition: 'transform 0.3s ease'
+            }}
+            title={consequencesExpanded ? 'Minimize' : 'Expand'}
+          >
+            {consequencesExpanded ? '▼' : '▶'}
+          </button>
+        </div>
+        {consequencesExpanded && (
+          <>
         {hasAirburst && airburstData ? (
           <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 14 }}>
             <li style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
@@ -798,6 +909,8 @@ const MapImpact = ({
               </li>
             )}
           </ul>
+        )}
+          </>
         )}
       </div>
     </div>

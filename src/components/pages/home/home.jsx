@@ -159,6 +159,8 @@ export default function Home() {
   // State for iris animation
   const [irisOpen, setIrisOpen] = useState(true); // true = circle open (content visible)
   const [irisTargetView, setIrisTargetView] = useState('3d'); // view to change to after closing iris
+  // Mobile drawer state
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   // Calculate crater radius in km
   const craterRadiusKm = Math.max(0.5, Math.cbrt(energyMt) * 1.8); // same factor as before, but in km
@@ -171,20 +173,23 @@ export default function Home() {
 
   return (
     <div className="impact-container" style={{ width: '100%', height: '100vh', position: 'relative' }}>
-      {/* Panel flotante de parámetros SIEMPRE visible */}
-      <div style={{
-        position: 'absolute',
-        top: 30,
-        left: 50,
-        zIndex: 2000, // más alto que el iris
-        background: 'rgba(20, 20, 40, 0.95)',
-        borderRadius: 12,
-        padding: 16,
-        maxWidth: 350,
-        backdropFilter: 'blur(10px)',
-        border: '1px solid rgba(124, 77, 255, 0.3)',
-        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)'
-      }}>
+      {/* Mobile toggle button */}
+      <button 
+        className={`mobile-toggle ${drawerOpen ? 'shifted' : ''}`}
+        onClick={() => setDrawerOpen(!drawerOpen)}
+        aria-label="Toggle menu"
+      >
+        {drawerOpen ? '✕' : '☰'}
+      </button>
+
+      {/* Mobile overlay */}
+      <div 
+        className={`mobile-overlay ${drawerOpen ? 'visible' : ''}`}
+        onClick={() => setDrawerOpen(false)}
+      />
+
+      {/* Control panel */}
+      <div className={`control-panel ${drawerOpen ? 'open' : ''}`}>
         <h3 style={{ color: '#7c4dff', marginTop: 0, fontSize: 18 }}>Asteroid Parameters</h3>
         <form style={{ display: 'flex', flexDirection: 'column', gap: 10 }} onSubmit={e => e.preventDefault()}>
           <label style={{ fontSize: 13 }}>
@@ -331,6 +336,8 @@ export default function Home() {
           </div>
           {selectedLat !== null && selectedLng !== null && !impacted && (
             <button onClick={() => {
+              // Close mobile drawer
+              setDrawerOpen(false);
               // Animation: close iris, then change view and open
               setIrisOpen(false);
               setIrisTargetView('2d');
@@ -356,6 +363,8 @@ export default function Home() {
           )}
           {impacted && (
             <button onClick={() => {
+              // Close mobile drawer
+              setDrawerOpen(false);
               setIrisOpen(false);
               setIrisTargetView('3d');
               setTimeout(() => {
