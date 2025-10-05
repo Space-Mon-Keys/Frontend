@@ -65,54 +65,54 @@ function DeformedGlobe({ selectedLat, selectedLng, impactLat, impactLng, craterR
   };
 
 
-  // Parámetros de zonas de impacto (radio relativo, color, opacidad, delay inicio, duración)
+  // Impact zone parameters (relative radius, color, opacity, start delay, duration)
   const impactZones = [
-    { relRadius: 0.1, color: '#ffff00', opacity: 1.0, delay: 0.0, duration: 0.3 }, // Vaporización (inmediato)
-    { relRadius: 0.3, color: '#ff8800', opacity: 0.95, delay: 0.1, duration: 0.4 }, // Fusión
-    { relRadius: 1.0, color: '#ff0000', opacity: 0.9, delay: 0.2, duration: 0.5 }, // Cráter
-    { relRadius: 2.0, color: '#cc0000', opacity: 0.7, delay: 0.3, duration: 0.6 }, // Eyección
-    { relRadius: 4.0, color: '#aa00ff', opacity: 0.6, delay: 0.4, duration: 0.7 }, // Terremotos severos
-    { relRadius: 8.0, color: '#4488ff', opacity: 0.5, delay: 0.5, duration: 0.8 }, // Ondas sísmicas
-    { relRadius: 12.0, color: '#88ccff', opacity: 0.4, delay: 0.6, duration: 0.9 }, // Onda de choque
+    { relRadius: 0.1, color: '#ffff00', opacity: 1.0, delay: 0.0, duration: 0.3 }, // Vaporization (immediate)
+    { relRadius: 0.3, color: '#ff8800', opacity: 0.95, delay: 0.1, duration: 0.4 }, // Melting
+    { relRadius: 1.0, color: '#ff0000', opacity: 0.9, delay: 0.2, duration: 0.5 }, // Crater
+    { relRadius: 2.0, color: '#cc0000', opacity: 0.7, delay: 0.3, duration: 0.6 }, // Ejecta
+    { relRadius: 4.0, color: '#aa00ff', opacity: 0.6, delay: 0.4, duration: 0.7 }, // Severe earthquakes
+    { relRadius: 8.0, color: '#4488ff', opacity: 0.5, delay: 0.5, duration: 0.8 }, // Seismic waves
+    { relRadius: 12.0, color: '#88ccff', opacity: 0.4, delay: 0.6, duration: 0.9 }, // Shock wave
   ];
 
-  // Estado de animación (progreso de expansión)
+  // Animation state (expansion progress)
   const [impactAnim, setImpactAnim] = useState(0);
   useFrame((_, delta) => {
     if (showCrater && impactAnim < 1) {
       setImpactAnim(a => Math.min(1, a + delta * 0.25)); // velocidad global
     } else if (!showCrater && impactAnim !== 0) {
-      setImpactAnim(0); // reset si se resetea el impacto
+      setImpactAnim(0); // reset if impact is reset
     }
   });
 
-  // Renderizar gradientes animados (versión anterior, anillos y discos sobre la esfera, animación radial)
-  // Utilidad para crear un disco (patch) sobre la esfera
+  // Render animated gradients (previous version, rings and discs on sphere, radial animation)
+  // Utility to create a disc (patch) on the sphere
   const createSphericalDisk = useMemo(() => {
     return (lat, lng, radius, segments) => {
-      const center = latLngToCartesian(lat, lng, 5.005); // Ajustado para esfera de radio 5
+      const center = latLngToCartesian(lat, lng, 5.005); // Adjusted for sphere of radius 5
       const normal = new THREE.Vector3(...center).normalize();
       const up = new THREE.Vector3(0, 1, 0);
       const axis = new THREE.Vector3().crossVectors(up, normal).normalize();
       const angle = Math.acos(up.dot(normal));
       const vertices = [];
-      // Centro
+      // Center
       vertices.push(...center);
       for (let i = 0; i <= segments; i++) {
         const theta = (2 * Math.PI * i) / segments;
-        // Coordenadas locales en plano tangente
+        // Local coordinates in tangent plane
         let v = new THREE.Vector3(
           Math.sin(theta) * radius,
           0,
           Math.cos(theta) * radius
         );
-        // Rotar al plano tangente
+        // Rotate to tangent plane
         if (axis.length() > 0.001) v.applyAxisAngle(axis, angle);
-        // Trasladar al centro
+        // Translate to center
         v.add(new THREE.Vector3(...center));
         vertices.push(v.x, v.y, v.z);
       }
-      // Índices
+      // Indices
       const indices = [];
       for (let i = 1; i <= segments; i++) {
         indices.push(0, i, i + 1);
@@ -125,16 +125,16 @@ function DeformedGlobe({ selectedLat, selectedLng, impactLat, impactLng, craterR
     if (!showCrater || impactLat == null || impactLng == null || craterRadius == null) return null;
     const segments = 64;
     return impactZones.map((zone, idx) => {
-      // Animación: cada zona comienza después de un delay y se expande durante una duración
+      // Animation: each zone starts after a delay and expands during a duration
       const localTime = Math.max(0, (impactAnim - zone.delay) / zone.duration);
-      const t = Math.min(1, localTime); // normalizar a 0-1
+      const t = Math.min(1, localTime); // normalize to 0-1
       
-      // No renderizar si aún no ha comenzado esta zona
+      // Don't render if this zone hasn't started yet
       if (impactAnim < zone.delay) return null;
       
-      // Los círculos empiezan con un tamaño del 5% y crecen hasta el 100%
-      const radiusStart = 0.05; // 5% del tamaño final
-      const radiusFinal = 1.0;   // 100% del tamaño final
+      // Circles start at 5% size and grow to 100%
+      const radiusStart = 0.05; // 5% of final size
+      const radiusFinal = 1.0;   // 100% of final size
       const radiusFactor = radiusStart + (radiusFinal - radiusStart) * t;
       const radius = craterRadius * zone.relRadius * radiusFactor;
       
@@ -156,7 +156,7 @@ function DeformedGlobe({ selectedLat, selectedLng, impactLat, impactLng, craterR
     if (selectedLat == null || selectedLng == null || showCrater) return null;
     const [x, y, z] = latLngToCartesian(selectedLat, selectedLng, 5.05); // Ajustado para esfera de radio 5
     return <mesh position={[x, y, z]} key={`marker-${selectedLat}-${selectedLng}`}>
-      <sphereGeometry args={[0.06, 16, 16]} /> {/* Tamaño ajustado 5x */}
+      <sphereGeometry args={[0.06, 16, 16]} /> {/* Size adjusted 5x */}
       <meshStandardMaterial color="#ffaa00" emissive="#ffaa00" emissiveIntensity={0.8} />
     </mesh>;
   }, [selectedLat, selectedLng, showCrater]);
@@ -190,19 +190,19 @@ function DeformedGlobe({ selectedLat, selectedLng, impactLat, impactLng, craterR
 
 
 const GlobeDeform = ({ selectedLat, selectedLng, impactLat, impactLng, craterRadiusKm, showCrater, onSphereClick }) => {
-  // Ajustar radio del cráter a escala real y multiplicar por 5 para la esfera más grande
-  const craterRadius = craterRadiusKm ? (craterRadiusKm / 6371) * 5 : 0.5; // 6371 km = radio Tierra, x5 por escala de esfera
+  // Adjust crater radius to real scale and multiply by 5 for larger sphere
+  const craterRadius = craterRadiusKm ? (craterRadiusKm / 6371) * 5 : 0.5; // 6371 km = Earth radius, x5 for sphere scale
   const craterDepth = craterRadius * 0.5;
 
-  // Leyenda de zonas de impacto
+  // Impact zone legend
   const impactZones = [
-    { color: '#ffff00', label: 'Vaporización', description: 'Todo se vaporiza instantáneamente' },
-    { color: '#ff8800', label: 'Fusión', description: 'Rocas fundidas, temperaturas extremas' },
-    { color: '#ff0000', label: 'Cráter', description: 'Excavación directa del impacto' },
-    { color: '#cc0000', label: 'Eyección', description: 'Material expulsado y escombros' },
-    { color: '#aa00ff', label: 'Terremotos severos', description: 'Daño estructural masivo' },
-    { color: '#4488ff', label: 'Ondas sísmicas', description: 'Terremotos moderados' },
-    { color: '#88ccff', label: 'Onda de choque', description: 'Efectos atmosféricos' }
+    { color: '#ffff00', label: 'Vaporization', description: 'Everything vaporizes instantly' },
+    { color: '#ff8800', label: 'Melting', description: 'Molten rock, extreme temperatures' },
+    { color: '#ff0000', label: 'Crater', description: 'Direct excavation from impact' },
+    { color: '#cc0000', label: 'Ejecta', description: 'Expelled material and debris' },
+    { color: '#aa00ff', label: 'Severe earthquakes', description: 'Massive structural damage' },
+    { color: '#4488ff', label: 'Seismic waves', description: 'Moderate earthquakes' },
+    { color: '#88ccff', label: 'Shock wave', description: 'Atmospheric effects' }
   ];
 
   return (
@@ -230,7 +230,7 @@ const GlobeDeform = ({ selectedLat, selectedLng, impactLat, impactLng, craterRad
           target={[0, 0, 0]}
         />
       </Canvas>
-      {/* Leyenda de zonas de impacto - posicionada a la derecha */}
+      {/* Impact zone legend - positioned on the right */}
       {showCrater && (
         <div style={{
           position: 'absolute',
@@ -243,7 +243,7 @@ const GlobeDeform = ({ selectedLat, selectedLng, impactLat, impactLng, craterRad
           borderRadius: 8,
           border: '1px solid rgba(124,77,255,0.3)'
         }}>
-          <h4 style={{ color: '#7c4dff', marginTop: 0, marginBottom: 12, fontSize: 14 }}>Zonas de Impacto</h4>
+          <h4 style={{ color: '#7c4dff', marginTop: 0, marginBottom: 12, fontSize: 14 }}>Impact Zones</h4>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {impactZones.map((zone, idx) => (
               <div key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>

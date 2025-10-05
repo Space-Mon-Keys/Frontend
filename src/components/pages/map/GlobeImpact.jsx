@@ -2,10 +2,10 @@ import React, { useRef, useEffect } from "react";
 import Globe from "react-globe.gl";
 // import * as THREE from "three";
 
-// Utilidad para calcular la "depresión" del cráter
+// Utility to calculate crater "depression"
 function getCraterPoints(lat, lng, radiusKm, depthKm = 0.5) {
-  // Genera puntos para un círculo de depresión en la superficie
-  // Solo para visualización, no física real
+  // Generate points for a depression circle on the surface
+  // For visualization only, not real physics
   const points = [];
   const steps = 64;
   for (let i = 0; i < steps; i++) {
@@ -15,7 +15,7 @@ function getCraterPoints(lat, lng, radiusKm, depthKm = 0.5) {
     points.push({
       lat: lat + dLat,
       lng: lng + dLng,
-      alt: -depthKm // Depresión
+      alt: -depthKm // Depression
     });
   }
   return points;
@@ -28,7 +28,7 @@ const DEFAULT_CENTER = { lat: 20, lng: 0, altitude: 2 };
 const GlobeImpact = ({ impactLat, impactLng, craterRadiusKm, onGlobeClick }) => {
   const globeEl = useRef();
 
-  // Simula la depresión del cráter como un anillo de puntos
+  // Simulate crater depression as a ring of points
   const craterPoints =
     impactLat && impactLng && craterRadiusKm
       ? getCraterPoints(impactLat, impactLng, craterRadiusKm)
@@ -36,7 +36,7 @@ const GlobeImpact = ({ impactLat, impactLng, craterRadiusKm, onGlobeClick }) => 
 
 
 
-  // Centrar el globo al inicio (solo una vez)
+  // Center the globe at start (only once)
   useEffect(() => {
     if (globeEl.current) {
       globeEl.current.pointOfView(DEFAULT_CENTER, 0);

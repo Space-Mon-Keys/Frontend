@@ -1,12 +1,12 @@
 import React, { useEffect, useRef, useState } from "react";
 
-// IrisTransition: animación de círculo que se expande o colapsa para transición de pantalla
+// IrisTransition: circle animation that expands or collapses for screen transition
 // Props:
-// - in: boolean, si la transición está activa (true = círculo abierto, false = cerrado)
-// - duration: ms de duración de la animación
-// - color: color del fondo del iris
-// - children: contenido a mostrar dentro
-// - onRest: callback cuando termina la animación
+// - in: boolean, if transition is active (true = circle open, false = closed)
+// - duration: animation duration in ms
+// - color: background color of iris
+// - children: content to show inside
+// - onRest: callback when animation finishes
 const IrisTransition = ({ in: inProp, duration = 700, color = "#181c24", children, onRest, style = {} }) => {
   const [show, setShow] = useState(inProp);
   const [renderChildren, setRenderChildren] = useState(inProp);
@@ -17,7 +17,7 @@ const IrisTransition = ({ in: inProp, duration = 700, color = "#181c24", childre
       setShow(true);
       setRenderChildren(true);
     } else {
-      // Espera la animación antes de ocultar
+      // Wait for animation before hiding
       timeoutRef.current = setTimeout(() => {
         setShow(false);
         setRenderChildren(false);
@@ -27,8 +27,8 @@ const IrisTransition = ({ in: inProp, duration = 700, color = "#181c24", childre
     return () => clearTimeout(timeoutRef.current);
   }, [inProp, duration, onRest]);
 
-  // El círculo cubre toda la pantalla, escala de 0 (cerrado) a 1.5 (abierto)
-  // Usamos un div con border-radius: 50% y transform: scale()
+  // The circle covers the entire screen, scales from 0 (closed) to 1.5 (open)
+  // We use a div with border-radius: 50% and transform: scale()
   return (
     <div style={{
       position: style.position || "fixed",

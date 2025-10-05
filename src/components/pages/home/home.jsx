@@ -25,55 +25,55 @@ const IMPACTS = {
 
 const MATERIALS = {
   ice: {
-    label: "Cometa (Hielo)",
+    label: "Comet (Ice)",
     factor: 0.5,
-    info: `Composición aproximada:
+    info: `Approximate composition:
 - H2O: 70%
 - CO2: 15%
 - CH4 + NH3: 5%
-- Polvo y minerales: 10%
+- Dust and minerals: 10%
 
-Características:
-- Densidad: 500–1500 kg/m³
-- Poroso y frágil, se desintegra con facilidad
-- Origen: Nube de Oort / Cinturón de Kuiper
-- Visual al entrar: brillo azul verdoso, fragmentación temprana, estelas cortas
-- Fenómenos asociados: lluvias de meteoros, sublimación cerca del Sol`
+Characteristics:
+- Density: 500–1500 kg/m³
+- Porous and fragile, disintegrates easily
+- Origin: Oort Cloud / Kuiper Belt
+- Visual on entry: greenish-blue brightness, early fragmentation, short trails
+- Associated phenomena: meteor showers, sublimation near the Sun`
     ,
     image: "https://content.nationalgeographic.com.es/medio/2023/03/09/cometa-c2023-a3_5224887f_1280_230309094606_1200x630.jpg"
   },
   rock: {
-    label: "Asteroide Rocoso",
+    label: "Rocky Asteroid",
     factor: 1,
-    info: `Composición aproximada:
-- Silicatos (olivino, piroxeno): 80%
-- Metales menores: 5–10%
-- Sulfuros: 5%
-- Otros minerales: 5–10%
+    info: `Approximate composition:
+- Silicates (olivine, pyroxene): 80%
+- Minor metals: 5–10%
+- Sulfides: 5%
+- Other minerals: 5–10%
 
-Características:
-- Densidad: 2500–3500 kg/m³
-- Resistente, fragmenta parcialmente al entrar en la atmósfera
-- Origen: cinturón principal de asteroides
-- Visual al entrar: brillo anaranjado/rojizo, estelas fragmentadas
-- Fenómeno asociado: bólidos brillantes, meteoritos condritas frecuentes`
+Characteristics:
+- Density: 2500–3500 kg/m³
+- Resistant, partially fragments on atmospheric entry
+- Origin: main asteroid belt
+- Visual on entry: orange/reddish glow, fragmented trails
+- Associated phenomenon: bright fireballs, chondrite meteorites common`
     ,
     image: "https://media.istockphoto.com/id/1222035078/es/vector/cometa-realista-meteorito-un-asteroide-en-movimiento-arde-contra-el-fondo-del-espacio.jpg?s=612x612&w=0&k=20&c=xEaOmevyMosgmX3ka5iWzjFdXTodgfzxu541DS_8peU="
   },
   metal: {
-    label: "Asteroide Metálico",
+    label: "Metallic Asteroid",
     factor: 2,
-    info: `Composición aproximada:
-- Hierro (Fe): 85–90%
-- Níquel (Ni): 5–10%
-- Otros metales: 5%
+    info: `Approximate composition:
+- Iron (Fe): 85–90%
+- Nickel (Ni): 5–10%
+- Other metals: 5%
 
-Características:
-- Densidad: 3500–6000 kg/m³
-- Muy resistente, sobrevive mayormente intacto
-- Origen: núcleos de planetesimales destruidos
-- Visual al entrar: blanco-azulado intenso, incandescencia roja en fragmentación
-- Fenómeno asociado: meteoritos metálicos, alta energía de impacto`
+Characteristics:
+- Density: 3500–6000 kg/m³
+- Very resistant, survives mostly intact
+- Origin: cores of destroyed planetesimals
+- Visual on entry: intense white-blue, red incandescence on fragmentation
+- Associated phenomenon: metallic meteorites, high impact energy`
     ,
     image: "https://www.elfinanciero.com.mx/resizer/v2/HNGAZOACPZGYTHTTOAUQTM3FHU.jpg?smart=true&auth=663b69256d2286554be98d1862f53f9e304de4fa4c56ee636456f3093f1cc0b8&width=400&height=225&quality=85"
   }
@@ -149,24 +149,24 @@ export default function Home() {
   const energyMt = energyJ / 4.184e15; // Convert to megatons TNT
 
 
-  // Estado para selección previa y confirmación de impacto
+  // State for pre-selection and impact confirmation
   const [selectedLat, setSelectedLat] = useLocalState(null);
   const [selectedLng, setSelectedLng] = useLocalState(null);
   const [impactLat, setImpactLat] = useLocalState(null);
   const [impactLng, setImpactLng] = useLocalState(null);
   const [impacted, setImpacted] = useLocalState(false);
-  const [view, setView] = useState('3d'); // '3d' o '2d'
-  // Estado para animación de iris
-  const [irisOpen, setIrisOpen] = useState(true); // true = círculo abierto (contenido visible)
-  const [irisTargetView, setIrisTargetView] = useState('3d'); // vista a la que se cambiará tras cerrar iris
+  const [view, setView] = useState('3d'); // '3d' or '2d'
+  // State for iris animation
+  const [irisOpen, setIrisOpen] = useState(true); // true = circle open (content visible)
+  const [irisTargetView, setIrisTargetView] = useState('3d'); // view to change to after closing iris
 
-  // Calcular radio del cráter en km
-  const craterRadiusKm = Math.max(0.5, Math.cbrt(energyMt) * 1.8); // mismo factor que antes, pero en km
+  // Calculate crater radius in km
+  const craterRadiusKm = Math.max(0.5, Math.cbrt(energyMt) * 1.8); // same factor as before, but in km
 
-  // Para react-three-fiber, el click se puede manejar con un input externo o con controles personalizados
+  // For react-three-fiber, click can be handled with external input or custom controls
   function handleGlobeClick(e) {
-    // e = {lat, lng} esperado, pero para el mockup usaremos un input manual
-    // Aquí podrías implementar un input para seleccionar el punto de impacto
+    // e = {lat, lng} expected, but for mockup we'll use manual input
+    // Here you could implement an input to select the impact point
   }
 
   return (
@@ -214,11 +214,11 @@ export default function Home() {
           </label>
           <div style={{ marginTop: 12 }}>
             <label style={{ fontSize: 13, display: "block", marginBottom: 6 }}>
-              Tipo de material:
+              Material type:
             </label>
 
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              {/* Select estilizado */}
+              {/* Styled select */}
               <select
                 value={material}
                 onChange={e => {
@@ -236,7 +236,7 @@ export default function Home() {
                   border: "1px solid rgba(124,77,255,0.5)",
                   background: "#1e1e2f",
                   color: "#fff",
-                  appearance: "none", // quita flecha por defecto
+                  appearance: "none", // removes default arrow
                   cursor: "pointer"
                 }}
               >
@@ -247,7 +247,7 @@ export default function Home() {
                 ))}
               </select>
 
-              {/* Botón info separado */}
+              {/* Separate info button */}
               <button
                 type="button"
                 onClick={() => {
@@ -262,7 +262,7 @@ export default function Home() {
                   cursor: "pointer",
                   flexShrink: 0
                 }}
-                title="Más información"
+                title="More information"
               >
                 ℹ️
               </button>
@@ -270,7 +270,7 @@ export default function Home() {
           </div>
           <div style={{ marginTop: 12 }}>
             <label style={{ fontSize: 13, display: "block", marginBottom: 4 }}>
-              Ajuste densidad (Hielo → Rocoso → Metal):
+              Density adjustment (Ice → Rocky → Metal):
             </label>
             <input
               type="range"
@@ -281,7 +281,7 @@ export default function Home() {
               onChange={e => {
                 const factor = Number(e.target.value);
                 setMaterialFactor(factor);
-                setDensity(BASE_DENSITY * factor); // actualiza density también
+                setDensity(BASE_DENSITY * factor); // also updates density
               }}
               style={{ width: "100%" }}
             />
@@ -290,10 +290,10 @@ export default function Home() {
             </div>
           </div>
           
-          {/* Ángulo de entrada */}
+          {/* Entry angle */}
           <div style={{ marginTop: 12 }}>
             <label style={{ fontSize: 13, display: "block", marginBottom: 4 }}>
-              Ángulo de entrada: <strong style={{ color: '#7c4dff' }}>{entryAngle}°</strong>
+              Entry angle: <strong style={{ color: '#7c4dff' }}>{entryAngle}°</strong>
             </label>
             <input
               type="range"
@@ -305,7 +305,7 @@ export default function Home() {
               style={{ width: "100%" }}
             />
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, opacity: 0.7, marginTop: 2 }}>
-              <span>Rasante (10°)</span>
+              <span>Grazing (10°)</span>
               <span>Vertical (90°)</span>
             </div>
           </div>
@@ -331,7 +331,7 @@ export default function Home() {
           </div>
           {selectedLat !== null && selectedLng !== null && !impacted && (
             <button onClick={() => {
-              // Animación: cerrar iris, luego cambiar vista y abrir
+              // Animation: close iris, then change view and open
               setIrisOpen(false);
               setIrisTargetView('2d');
               setTimeout(() => {
@@ -340,7 +340,7 @@ export default function Home() {
                 setImpacted(true);
                 setView('2d');
                 setIrisOpen(true);
-              }, 700); // Debe coincidir con duración de IrisTransition
+              }, 700); // Must match IrisTransition duration
             }} style={{
               width: '100%',
               padding: '10px 24px',
@@ -352,7 +352,7 @@ export default function Home() {
               cursor: 'pointer',
               fontWeight: 'bold',
               marginTop: 8
-            }}>IMPACTAR</button>
+            }}>IMPACT</button>
           )}
           {impacted && (
             <button onClick={() => {
@@ -373,11 +373,11 @@ export default function Home() {
               borderRadius: 8,
               cursor: 'pointer',
               marginTop: 8
-            }}>Resetear</button>
+            }}>Reset</button>
           )}
         </div>
       </div>
-      {/* Área visual principal: globo/mapa con transición iris */}
+      {/* Main visual area: globe/map with iris transition */}
       <div style={{ width: '100%', height: '100vh', position: 'relative', overflow: 'hidden' }}>
         <IrisTransition
           in={irisOpen}
@@ -413,7 +413,7 @@ export default function Home() {
         </IrisTransition>
 
 
-        {/* Modal info meteoritos*/}
+        {/* Meteorite info modal */}
         {showModal && modalMaterial && (
           <div
             onClick={() => setShowModal(false)}
@@ -431,7 +431,7 @@ export default function Home() {
             }}
           >
             <div
-              onClick={e => e.stopPropagation()} // evita cerrar al clicar dentro
+              onClick={e => e.stopPropagation()} // prevents closing when clicking inside
               style={{
                 background: "#1e1e2f",
                 borderRadius: 12,
@@ -443,7 +443,7 @@ export default function Home() {
                 position: "relative"
               }}
             >
-              {/* Botón X */}
+              {/* X button */}
               <button
                 onClick={() => setShowModal(false)}
                 style={{
@@ -456,7 +456,7 @@ export default function Home() {
                   fontSize: 18,
                   cursor: "pointer",
                 }}
-                title="Cerrar"
+                title="Close"
               >
                 ✖
               </button>

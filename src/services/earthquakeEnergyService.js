@@ -1,37 +1,37 @@
-// Servicio para comparar energía de impacto con terremotos reales (USGS)
-// Fórmulas USGS:
-//   log10(E) = 1.5*M + 4.8   (E en julios, M magnitud)
+// Service to compare impact energy with real earthquakes (USGS)
+// USGS formulas:
+//   log10(E) = 1.5*M + 4.8   (E in joules, M magnitude)
 //   M = (log10(E) - 4.8) / 1.5
 
 /**
- * Convierte energía de impacto (julios) a magnitud sísmica Mw
- * Solo una fracción de la energía de impacto se convierte en energía sísmica radiada.
+ * Converts impact energy (joules) to seismic magnitude Mw
+ * Only a fraction of impact energy converts to radiated seismic energy.
  * 
- * @param {number} impactEnergyJoules - Energía total del impacto en julios
- * @param {number} eta - Factor de acoplamiento sísmico η (adimensional, rango 1e-4 a 1e-3)
- *                       - Roca/continente: 1e-3 (por defecto)
- *                       - Sedimentos blandos: 3e-4
- *                       - Océano/profundidad: 1e-4
- * @returns {number} Magnitud sísmica Mw equivalente
+ * @param {number} impactEnergyJoules - Total impact energy in joules
+ * @param {number} eta - Seismic coupling factor η (dimensionless, range 1e-4 to 1e-3)
+ *                       - Rock/continent: 1e-3 (default)
+ *                       - Soft sediments: 3e-4
+ *                       - Ocean/depth: 1e-4
+ * @returns {number} Equivalent seismic magnitude Mw
  */
 export function energyToMagnitude(impactEnergyJoules, eta = 1e-3) {
   if (!impactEnergyJoules || impactEnergyJoules <= 0) return null;
   
-  // Calcular energía sísmica radiada: E_sismo = E_impacto × η
+  // Calculate radiated seismic energy: E_seismic = E_impact × η
   const seismicEnergyJoules = impactEnergyJoules * eta;
   
-  // Aplicar fórmula USGS: Mw = (log10(E_sismo) - 4.8) / 1.5
+  // Apply USGS formula: Mw = (log10(E_seismic) - 4.8) / 1.5
   const magnitude = (Math.log10(seismicEnergyJoules) - 4.8) / 1.5;
   
   return magnitude;
 }
 
 /**
- * Consulta la API del USGS para terremotos con magnitud similar
- * @param {number} magnitude - Magnitud Richter
- * @param {number} delta - Rango de magnitud (default 0.2)
- * @param {number} limit - Máximo de resultados (default 5)
- * @returns {Promise<Array>} Lista de terremotos reales
+ * Query USGS API for earthquakes with similar magnitude
+ * @param {number} magnitude - Richter magnitude
+ * @param {number} delta - Magnitude range (default 0.2)
+ * @param {number} limit - Maximum results (default 5)
+ * @returns {Promise<Array>} List of real earthquakes
  */
 export async function findSimilarEarthquakes(magnitude, delta = 0.2, limit = 5) {
   if (!magnitude) return [];
@@ -43,7 +43,7 @@ export async function findSimilarEarthquakes(magnitude, delta = 0.2, limit = 5) 
     if (!res.ok) throw new Error('USGS API error');
     const data = await res.json();
     if (!data.features) return [];
-    // Mapear a formato simple
+    // Map to simple format
     return data.features.map(f => ({
       id: f.id,
       place: f.properties.place,
@@ -57,6 +57,6 @@ export async function findSimilarEarthquakes(magnitude, delta = 0.2, limit = 5) 
   }
 }
 
-// Ejemplo de uso:
+// Usage example:
 // const mag = energyToMagnitude(1e15);
 // findSimilarEarthquakes(mag).then(console.log);

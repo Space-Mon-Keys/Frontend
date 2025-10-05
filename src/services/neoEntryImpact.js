@@ -492,7 +492,7 @@ function estimateBlastEffects(energy, altitude) {
 
   // --- Empirical attenuation for high-altitude meteor airbursts ---
   // If burst altitude > 25 km, apply attenuation to all radii (empirical, for meteorites)
-  // See: SpaceApps 2025, ajuste físico-empírico para disipación atmosférica
+  // See: SpaceApps 2025, empirical-physics adjustment for atmospheric dissipation
   const H_REF = 25; // km, reference height
   const H_SCALE = 8; // km, attenuation scale
   const EXP_P = 0.6; // exponent
@@ -517,11 +517,11 @@ function estimateBlastEffects(energy, altitude) {
   else if (radiusWindowBreak > 20) severity = 'moderate';
 
   /*
-    Ajuste empírico para meteoritos con bursts altos:
-    - Para bursts > 25 km, se aplica atenuación atmosférica adicional a todos los radios de daño.
-    - El radio de 2 kPa (rotura de ventanas) se limita a 300 km tras la atenuación.
-    - Basado en disipación atmosférica mayor que en explosiones nucleares.
-    - Parámetros: H_REF=25 km, H_SCALE=8 km, EXP_P=0.6, CAP_2KPA=300 km.
+    Empirical adjustment for meteorites with high bursts:
+    - For bursts > 25 km, additional atmospheric attenuation is applied to all damage radii.
+    - 2 kPa radius (window breakage) is capped at 300 km after attenuation.
+    - Based on atmospheric dissipation greater than in nuclear explosions.
+    - Parameters: H_REF=25 km, H_SCALE=8 km, EXP_P=0.6, CAP_2KPA=300 km.
   */
 
   return {
